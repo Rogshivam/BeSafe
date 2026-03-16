@@ -1,0 +1,109 @@
+import { motion } from 'framer-motion';
+import { DashboardSidebar } from '@/components/DashboardSidebar';
+import { MapWidget } from '@/components/MapWidget';
+import { ActivityLog } from '@/components/ActivityLog';
+import { QuickActions } from '@/components/QuickActions';
+import { ChatbotWidget } from '@/components/ChatbotWidget';
+import { EmergencyContacts } from '@/components/EmergencyContacts';
+import { SettingsPanel } from '@/components/SettingsPanel';
+import { Phone } from 'lucide-react';
+
+const safeZones = [
+  { name: 'Home', status: 'Safe', color: 'bg-safe' },
+  { name: 'School', status: 'Safe', color: 'bg-safe' },
+  { name: 'Park', status: 'Boundary', color: 'bg-warning' },
+];
+
+const alerts = [
+  { time: '01:31', msg: 'Home, Safe', type: 'safe' },
+  { time: '12:03', msg: 'School, Safe', type: 'safe' },
+  { time: '10:20', msg: 'Morning, safe', type: 'safe' },
+];
+
+const ParentDashboard = () => (
+  <div className="flex min-h-screen bg-secondary/30">
+    <DashboardSidebar />
+    <main className="flex-1 p-6 lg:p-8 overflow-auto">
+      <div className="max-w-6xl mx-auto space-y-6">
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-between items-start">
+          <div>
+            <div className="flex gap-2 flex-wrap mb-4">
+              {['Dashboard', 'Child Location', 'Alerts', 'Settings'].map((tab, i) => (
+                <button key={tab} className={`px-4 py-2 rounded-xl text-sm font-medium ${i === 0 ? 'gradient-primary text-primary-foreground' : 'bg-card text-foreground shadow-depth'}`}>
+                  {tab}
+                </button>
+              ))}
+            </div>
+          </div>
+          <SettingsPanel />
+        </motion.div>
+
+        <div className="grid lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <MapWidget location="School" status="Active" />
+          </div>
+
+          <div className="space-y-6">
+            {/* Safe Zones */}
+            <div className="bg-card rounded-2xl shadow-depth p-4">
+              <h3 className="font-bold text-foreground mb-3 flex items-center gap-2">
+                <span>🛡️</span> Safe Zones
+              </h3>
+              <div className="space-y-2">
+                {safeZones.map((z) => (
+                  <div key={z.name} className="flex items-center justify-between p-2 rounded-xl bg-secondary/50">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full ${z.color}`} />
+                      <span className="text-sm font-medium text-foreground">{z.name}</span>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${z.status === 'Safe' ? 'bg-safe/10 text-safe' : 'bg-warning/10 text-warning'}`}>
+                      {z.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Emergency Call */}
+            <button
+              onClick={() => window.open('tel:911', '_self')}
+              className="w-full py-3 gradient-emergency text-destructive-foreground rounded-2xl font-bold flex items-center justify-center gap-2 shadow-depth hover:opacity-90 active:scale-95"
+            >
+              <Phone className="w-5 h-5" /> Emergency Call (911)
+            </button>
+
+            {/* Alerts */}
+            <div className="bg-card rounded-2xl shadow-depth p-4">
+              <h3 className="font-bold text-foreground mb-3 flex items-center gap-2">
+                <span>🔔</span> Alerts
+              </h3>
+              <div className="space-y-2">
+                {alerts.map((a, i) => (
+                  <div key={i} className="flex items-center gap-3 p-2 rounded-xl bg-secondary/50">
+                    <span className="text-xs font-mono text-muted-foreground">{a.time}</span>
+                    <div className="w-2 h-2 rounded-full bg-safe" />
+                    <span className="text-sm text-foreground">{a.msg}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Emergency Contacts */}
+        <EmergencyContacts />
+
+        <ActivityLog entries={[
+          { time: '01:31', message: 'Entered Safe Zone', type: 'system' },
+          { time: '12:03', message: 'Emergency Disabled', type: 'action' },
+          { time: '10:20', message: 'Emergency Alert', type: 'warning' },
+        ]} />
+
+        <QuickActions />
+      </div>
+    </main>
+    <ChatbotWidget role="parent" />
+  </div>
+);
+
+export default ParentDashboard;
