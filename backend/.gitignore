@@ -1,0 +1,94 @@
+# =========================
+
+# Root
+
+# =========================
+
+node_modules/
+.env
+.env.*
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS files
+
+.DS_Store
+Thumbs.db
+
+# IDE
+
+.vscode/
+.idea/
+
+# =========================
+
+# Server (Node + Express)
+
+# =========================
+
+/server/node_modules/
+/server/.env
+/server/logs/
+/server/tmp/
+
+# build outputs
+
+/server/dist/
+/server/build/
+
+# =========================
+
+# Client (React)
+
+# =========================
+
+/client/node_modules/
+/client/.env
+/client/.env.local
+/client/.env.development.local
+/client/.env.test.local
+/client/.env.production.local
+
+# build output
+
+/client/build/
+/client/dist/
+
+# coverage
+
+/client/coverage/
+
+# =========================
+
+# MongoDB (if local files)
+
+# =========================
+
+/data/
+/dump/
+
+# =========================
+
+# Misc
+
+# =========================
+
+*.pem
+*.key
+*.crt
+
+# cache
+
+.cache/
+.parcel-cache/
+
+# lock files (optional — keep if team needs consistency)
+
+# package-lock.json
+
+# yarn.lock
+
+# pnpm-lock.yaml
