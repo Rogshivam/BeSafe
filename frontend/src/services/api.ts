@@ -1,0 +1,439 @@
+import axios, { AxiosInstance, AxiosResponse } from 'axios';
+
+// API base URL - change this to your backend URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+// Create axios instance
+const api: AxiosInstance = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Request interceptor to add auth token
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor to handle errors
+api.interceptors.response.use(
+  (response: AxiosResponse) => {
+    return response;
+  },
+  (error) => {
+    if (error.response?.status === 401) {
+      // Token expired or invalid
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Types
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  userType: 'Individual' | 'Member';
+  age?: number;
+  status: 'Safe' | 'Alert' | 'Emergency';
+  currentLocation?: {
+    latitude: number;
+    longitude: number;
+    address?: string;
+    accuracy?: number;
+  };
+  emergencyContacts?: EmergencyContact[];
+  emergencySettings?: {
+    voiceDetectionEnabled: boolean;
+    gestureDetectionEnabled: boolean;
+    autoTriggerEnabled: boolean;
+    panicWord: string;
+  };
+  notifications?: {
+    email: boolean;
+    sms: boolean;
+    push: boolean;
+  };
+  profileImage?: string;
+  lastActive?: string;
+}
+
+export interface EmergencyContact {
+  memberId: string;
+  memberName?: string;
+  relation: 'Parent' | 'Friend' | 'Guardian' | 'Spouse' | 'Sibling' | 'Other';
+  priority: 'High' | 'Medium' | 'Low';
+  isEmergencyContact: boolean;
+}
+
+export interface Emergency {
+  id: string;
+  individualId: string;
+  individualName?: string;
+  triggeredBy: 'Manual' | 'Voice' | 'Gesture' | 'Auto' | 'Location';
+  status: 'Active' | 'Resolved' | 'False Alarm';
+  severity: 'Low' | 'Medium' | 'High' | 'Critical';
+  location: {
+    latitude: number;
+    longitude: number;
+    address?: string;
+    accuracy?: number;
+  };
+  message?: string;
+  audioRecording?: string;
+  image?: string;
+  notifiedMembers?: Array<{
+    memberId: string;
+    memberName?: string;
+    notifiedAt: string;
+    response: 'Pending' | 'Help' | 'Ignore';
+    respondedAt?: string;
+  }>;
+  responders?: Array<{
+    memberId: string;
+    memberName?: string;
+    joinedAt: string;
+    status: 'On the way' | 'Arrived' | 'Left';
+  }>;
+  timeline?: Array<{
+    action: string;
+    timestamp: string;
+    userId?: string;
+    userName?: string;
+    details?: string;
+  }>;
+  resolvedAt?: string;
+  resolvedBy?: string;
+  resolutionNotes?: string;
+  createdAt: string;
+}
+
+export interface Message {
+  id: string;
+  senderId: string;
+  senderName?: string;
+  receiverId: string;
+  receiverName?: string;
+  emergencyId?: string;
+  messageType: 'Text' | 'Image' | 'Audio' | 'Location' | 'System';
+  content: string;
+  mediaUrl?: string;
+  location?: {
+    latitude: number;
+    longitude: number;
+    address?: string;
+  };
+  isRead: boolean;
+  readAt?: string;
+  delivered: boolean;
+  deliveredAt?: string;
+  priority: 'Low' | 'Normal' | 'High' | 'Urgent';
+  createdAt: string;
+}
+
+export interface Location {
+  latitude: number;
+  longitude: number;
+  address?: string;
+  accuracy?: number;
+  timestamp: string;
+}
+
+// Auth API
+export const authAPI = {
+  register: async (userData: {
+    name: string;
+    email: string;
+    phone: string;
+    password: string;
+    userType: 'Individual' | 'Member';
+    age?: number;
+  }) => {
+    const response = await api.post('/auth/register', userData);
+    return response.data;
+  },
+
+  login: async (credentials: { email: string; password: string }) => {
+    const response = await api.post('/auth/login', credentials);
+    return response.data;
+  },
+
+  getCurrentUser: async (): Promise<{ success: boolean; data: { user: User } }> => {
+    const response = await api.get('/auth/me');
+    return response.data;
+  },
+
+  updateProfile: async (profileData: Partial<User>) => {
+    const response = await api.put('/auth/profile', profileData);
+    return response.data;
+  },
+
+  changePassword: async (passwords: {
+    currentPassword: string;
+    newPassword: string;
+  }) => {
+    const response = await api.put('/auth/change-password', passwords);
+    return response.data;
+  },
+};
+
+// Users API
+export const usersAPI = {
+  searchUsers: async (query: string, userType?: 'Individual' | 'Member') => {
+    const params = new URLSearchParams({ query });
+    if (userType) params.append('userType', userType);
+    const response = await api.get(`/users/search?${params}`);
+    return response.data;
+  },
+
+  getEmergencyContacts: async (): Promise<{ success: boolean; data: { emergencyContacts: EmergencyContact[] } }> => {
+    const response = await api.get('/users/emergency-contacts');
+    return response.data;
+  },
+
+  addEmergencyContact: async (contactData: {
+    memberId: string;
+    relation: string;
+    priority: string;
+  }) => {
+    const response = await api.post('/users/emergency-contacts', contactData);
+    return response.data;
+  },
+
+  updateEmergencyContact: async (contactId: string, contactData: {
+    relation?: string;
+    priority?: string;
+  }) => {
+    const response = await api.put(`/users/emergency-contacts/${contactId}`, contactData);
+    return response.data;
+  },
+
+  removeEmergencyContact: async (contactId: string) => {
+    const response = await api.delete(`/users/emergency-contacts/${contactId}`);
+    return response.data;
+  },
+
+  getUserProfile: async (userId: string): Promise<{ success: boolean; data: { user: User } }> => {
+    const response = await api.get(`/users/${userId}`);
+    return response.data;
+  },
+
+  updateStatus: async (status: 'Safe' | 'Alert' | 'Emergency') => {
+    const response = await api.put('/users/status', { status });
+    return response.data;
+  },
+};
+
+// Emergency API
+export const emergencyAPI = {
+  triggerEmergency: async (emergencyData: {
+    triggeredBy: string;
+    latitude: number;
+    longitude: number;
+    severity?: string;
+    message?: string;
+    address?: string;
+    accuracy?: number;
+  }, files?: { image?: File; audio?: File }) => {
+    const formData = new FormData();
+    Object.entries(emergencyData).forEach(([key, value]) => {
+      if (value !== undefined) {
+        formData.append(key, value.toString());
+      }
+    });
+
+    if (files?.image) {
+      formData.append('image', files.image);
+    }
+    if (files?.audio) {
+      formData.append('audio', files.audio);
+    }
+
+    const response = await api.post('/emergency/trigger', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  getActiveEmergencies: async (): Promise<{ success: boolean; data: { emergencies: Emergency[] } }> => {
+    const response = await api.get('/emergency/active');
+    return response.data;
+  },
+
+  respondToEmergency: async (emergencyId: string, response: 'Help' | 'Ignore') => {
+    const apiResponse = await api.post(`/emergency/${emergencyId}/respond`, { response });
+    return apiResponse.data;
+  },
+
+  getEmergencyDetails: async (emergencyId: string): Promise<{ success: boolean; data: { emergency: Emergency } }> => {
+    const response = await api.get(`/emergency/${emergencyId}`);
+    return response.data;
+  },
+
+  resolveEmergency: async (emergencyId: string, resolutionNotes?: string) => {
+    const response = await api.post(`/emergency/${emergencyId}/resolve`, { resolutionNotes });
+    return response.data;
+  },
+
+  getEmergencyHistory: async (userId: string): Promise<{ success: boolean; data: { emergencies: Emergency[] } }> => {
+    const response = await api.get(`/emergency/history/${userId}`);
+    return response.data;
+  },
+};
+
+// Location API
+export const locationAPI = {
+  updateLocation: async (locationData: {
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+    address?: string;
+  }) => {
+    const response = await api.post('/location/update', locationData);
+    return response.data;
+  },
+
+  getCurrentLocation: async (userId: string): Promise<{ success: boolean; data: { location: Location; status: string; lastActive: string } }> => {
+    const response = await api.get(`/location/${userId}/current`);
+    return response.data;
+  },
+
+  getLocationHistory: async (userId: string, minutes?: number): Promise<{ success: boolean; data: { locationHistory: Location[]; timeRange: string; totalPoints: number } }> => {
+    const params = minutes ? `?minutes=${minutes}` : '';
+    const response = await api.get(`/location/${userId}/history${params}`);
+    return response.data;
+  },
+
+  getNearbyUsers: async (latitude: number, longitude: number, radius?: number) => {
+    const params = new URLSearchParams({
+      latitude: latitude.toString(),
+      longitude: longitude.toString(),
+      radius: (radius || 1000).toString(),
+    });
+    const response = await api.get(`/location/nearby?${params}`);
+    return response.data;
+  },
+
+  getLocationStats: async (userId: string, days?: number) => {
+    const params = days ? `?days=${days}` : '';
+    const response = await api.get(`/location/${userId}/stats${params}`);
+    return response.data;
+  },
+
+  updateSharingPreferences: async (preferences: {
+    shareWithEmergencyContacts?: boolean;
+    shareDuringEmergency?: boolean;
+    shareLocationHistory?: boolean;
+  }) => {
+    const response = await api.put('/location/sharing-preferences', preferences);
+    return response.data;
+  },
+};
+
+// Communication API
+export const communicationAPI = {
+  sendMessage: async (messageData: {
+    receiverId: string;
+    messageType?: string;
+    content?: string;
+    priority?: string;
+    emergencyId?: string;
+    latitude?: number;
+    longitude?: number;
+    address?: string;
+  }, file?: File) => {
+    const formData = new FormData();
+    Object.entries(messageData).forEach(([key, value]) => {
+      if (value !== undefined) {
+        formData.append(key, value.toString());
+      }
+    });
+
+    if (file) {
+      formData.append('media', file);
+    }
+
+    const response = await api.post('/communication/send', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  getConversation: async (userId: string, limit?: number, page?: number): Promise<{ success: boolean; data: { messages: Message[]; otherUser: User; unreadCount: number } }> => {
+    const params = new URLSearchParams();
+    if (limit) params.append('limit', limit.toString());
+    if (page) params.append('page', page.toString());
+    
+    const response = await api.get(`/communication/conversation/${userId}?${params}`);
+    return response.data;
+  },
+
+  getEmergencyMessages: async (emergencyId: string): Promise<{ success: boolean; data: { messages: Message[]; unreadCount: number; emergency: any } }> => {
+    const response = await api.get(`/communication/emergency/${emergencyId}`);
+    return response.data;
+  },
+
+  getUnreadMessages: async (): Promise<{ success: boolean; data: { messages: Message[]; count: number } }> => {
+    const response = await api.get('/communication/unread');
+    return response.data;
+  },
+
+  markAsRead: async (messageId: string) => {
+    const response = await api.put(`/communication/${messageId}/read`);
+    return response.data;
+  },
+
+  triggerAlarm: async (message?: string) => {
+    const response = await api.post('/communication/trigger-alarm', { message });
+    return response.data;
+  },
+
+  deleteMessage: async (messageId: string) => {
+    const response = await api.delete(`/communication/${messageId}`);
+    return response.data;
+  },
+};
+
+// Utility functions
+export const setAuthToken = (token: string) => {
+  localStorage.setItem('token', token);
+};
+
+export const getAuthToken = () => {
+  return localStorage.getItem('token');
+};
+
+export const removeAuthToken = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+};
+
+export const setCurrentUser = (user: User) => {
+  localStorage.setItem('user', JSON.stringify(user));
+};
+
+export const getCurrentUser = (): User | null => {
+  const userStr = localStorage.getItem('user');
+  return userStr ? JSON.parse(userStr) : null;
+};
+
+export default api;
