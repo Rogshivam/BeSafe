@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { ShieldCheck, User, Users, Baby, Eye, EyeOff } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
 import { useAuth } from '@/context/AuthContext';
-
+import CurrentDate from '@/components/Date';
 type Role = 'adult' | 'parent' | 'child';
 
 const roles: { value: Role; label: string; icon: typeof User }[] = [
@@ -12,6 +12,12 @@ const roles: { value: Role; label: string; icon: typeof User }[] = [
   { value: 'parent', label: 'Parent', icon: Users },
   { value: 'child', label: 'Child', icon: Baby },
 ];
+const roleMap: any = {
+  adult: "Individual",
+  parent: "Parent",
+  child: "Child"
+};
+const apiUrl = import.meta.env.VITE_API_URL;
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -20,13 +26,43 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   const { setRole, setUserName } = useAuth();
+ const handleLogin = async (e: React.FormEvent) => {
+  e.preventDefault();
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
+  try {
+    const res = await fetch(`${apiUrl}/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        email,
+        password
+      })
+    });
+
+    const data = await res.json();
+
+    if (!data.success) {
+      alert(data.message);
+      return;
+    }
+
+    // ✅ Save token
+    localStorage.setItem("token", data.data.token);
+
+    // ✅ Save user info
     setRole(selectedRole);
-    setUserName(email.split('@')[0] || 'John');
+    setUserName(data.data.user.name);
+
+    // ✅ Redirect
     navigate(`/dashboard/${selectedRole}`);
-  };
+
+  } catch (error) {
+    console.error(error);
+    alert("Login failed");
+  }
+};
 
   return (
     <div className="min-h-screen bg-background">
@@ -39,7 +75,9 @@ const Login = () => {
             animate={{ opacity: 1, x: 0 }}
           >
             <h1 className="text-5xl md:text-6xl font-bold text-foreground mb-4">Login Screen</h1>
-            <p className="text-muted-foreground">March 14, 2026</p>
+            <p className="text-muted-foreground">
+              <CurrentDate />
+            </p>
           </motion.div>
 
           {/* Right - Login Card */}
@@ -115,7 +153,13 @@ const Login = () => {
 
                 <div className="flex justify-between mt-4 text-xs text-muted-foreground">
                   <button className="hover:text-primary">Forgot password?</button>
-                  <button className="hover:text-primary">Create an account</button>
+                  <button 
+                    type="button"
+                    className="hover:text-primary"
+                    onClick={() => navigate("/register")}
+                  >
+                  Create an account
+                </button>
                 </div>
               </div>
             </div>

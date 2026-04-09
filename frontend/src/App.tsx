@@ -14,6 +14,8 @@ import ParentDashboard from "./pages/ParentDashboard";
 import ChildDashboard from "./pages/ChildDashboard";
 import EvidenceLocker from "./pages/EvidenceLocker";
 import NotFound from "./pages/NotFound";
+import Register from "./pages/Register";
+
 
 const queryClient = new QueryClient();
 
@@ -29,6 +31,7 @@ const App = () => (
             <Route path="/about" element={<About />} />
             <Route path="/contact" element={<Contact />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
             <Route path="/dashboard/select" element={<DashboardSelect />} />
             <Route path="/dashboard/adult" element={<AdultDashboard />} />
             <Route path="/dashboard/parent" element={<ParentDashboard />} />
