@@ -54,28 +54,28 @@ class NotificationService {
     }
   }
 
-  async sendSMSNotification(to, message, priority = 'Normal') {
-    try {
-      if (!this.twilioClient || !process.env.TWILIO_PHONE_NUMBER) {
-        console.log('SMS service not configured');
-        return false;
-      }
+  // async sendSMSNotification(to, message, priority = 'Normal') {
+  //   try {
+  //     if (!this.twilioClient || !process.env.TWILIO_PHONE_NUMBER) {
+  //       console.log('SMS service not configured');
+  //       return false;
+  //     }
 
-      const formattedMessage = this.getFormattedMessage(message, priority);
+  //     const formattedMessage = this.getFormattedMessage(message, priority);
       
-      const result = await this.twilioClient.messages.create({
-        body: formattedMessage,
-        from: process.env.TWILIO_PHONE_NUMBER,
-        to
-      });
+  //     const result = await this.twilioClient.messages.create({
+  //       body: formattedMessage,
+  //       from: process.env.TWILIO_PHONE_NUMBER,
+  //       to
+  //     });
 
-      console.log('SMS sent successfully:', result.sid);
-      return true;
-    } catch (error) {
-      console.error('SMS send error:', error);
-      return false;
-    }
-  }
+  //     console.log('SMS sent successfully:', result.sid);
+  //     return true;
+  //   } catch (error) {
+  //     console.error('SMS send error:', error);
+  //     return false;
+  //   }
+  // }
 
   async sendEmergencyNotification(user, emergency, contacts) {
     const notifications = [];
@@ -111,18 +111,18 @@ ${emergency.message ? `Message: ${emergency.message}` : ''}
       }
 
       // Send SMS if enabled
-      if (contactUser.notifications?.sms && contactUser.phone) {
-        const smsSent = await this.sendSMSNotification(
-          contactUser.phone,
-          emergencyMessage,
-          'Urgent'
-        );
-        notifications.push({
-          type: 'sms',
-          contactId: contactUser._id,
-          success: smsSent
-        });
-      }
+      // if (contactUser.notifications?.sms && contactUser.phone) {
+      //   const smsSent = await this.sendSMSNotification(
+      //     contactUser.phone,
+      //     emergencyMessage,
+      //     'Urgent'
+      //   );
+      //   notifications.push({
+      //     type: 'sms',
+      //     contactId: contactUser._id,
+      //     success: smsSent
+      //   });
+      // }
     }
 
     return notifications;
@@ -232,18 +232,18 @@ ${location.address ? `Address: ${location.address}` : ''}
     }
   }
 
-  async testSMSService() {
-    if (!this.twilioClient) {
-      return { success: false, message: 'SMS service not configured' };
-    }
+  // async testSMSService() {
+  //   if (!this.twilioClient) {
+  //     return { success: false, message: 'SMS service not configured' };
+  //   }
 
-    try {
-      const account = await this.twilioClient.api.accounts(process.env.TWILIO_ACCOUNT_SID).fetch();
-      return { success: true, message: 'SMS service is working', account: account.friendlyName };
-    } catch (error) {
-      return { success: false, message: error.message };
-    }
-  }
+  //   try {
+  //     const account = await this.twilioClient.api.accounts(process.env.TWILIO_ACCOUNT_SID).fetch();
+  //     return { success: true, message: 'SMS service is working', account: account.friendlyName };
+  //   } catch (error) {
+  //     return { success: false, message: error.message };
+  //   }
+  // }
 }
 
 export default new NotificationService();

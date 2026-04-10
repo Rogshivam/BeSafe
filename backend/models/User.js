@@ -117,6 +117,12 @@ const userSchema = new mongoose.Schema({
       default: 'help'
     }
   },
+  resetPasswordToken: {
+  type: String
+},
+resetPasswordExpire: {
+  type: Date
+},
   notifications: {
     email: {
       type: Boolean,

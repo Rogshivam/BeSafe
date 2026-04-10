@@ -8,9 +8,101 @@ import {
   validateLogin, 
   handleValidationErrors 
 } from '../middleware/validation.js';
+import crypto from 'crypto';
 
 const router = express.Router();
 
+// FORGOT PASSWORD (send reset token)
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.json({
+        success: true,
+        message: 'If this email exists, a reset link has been sent'
+      });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(resetToken)
+      .digest('hex');
+
+    user.resetPasswordToken = hashedToken;
+    user.resetPasswordExpire = Date.now() + 10 * 60 * 1000;
+
+    await user.save();
+
+    console.log("Reset token:", resetToken); // testing
+
+    res.json({
+      success: true,
+      message: 'Reset token generated',
+      data: { resetToken }
+    });
+
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+// RESET PASSWORD
+router.put('/reset-password/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password } = req.body;
+if (!password || password.length < 6) {
+  return res.status(400).json({
+    success: false,
+    message: 'Password must be at least 6 characters'
+  });
+}
+    // Hash token from params
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(token)
+      .digest('hex');
+
+    const user = await User.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpire: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired token'
+      });
+    }
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(password, salt);
+
+    // Clear reset fields
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Password reset successful'
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error resetting password'
+    });
+  }
+});
+ 
 // Register user
 router.post('/register', validateRegister, handleValidationErrors, async (req, res) => {
   try {
