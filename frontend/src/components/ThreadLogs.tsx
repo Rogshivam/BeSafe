@@ -2,7 +2,6 @@ import { FileText, AlertTriangle, MapPin, Clock } from 'lucide-react';
 import { BottomNav } from '@/components/BottomNav';
 import { motion } from 'framer-motion';
 import { DashboardSidebar } from './DashboardSidebar';
-
 interface LogEntry {
   id: string;
   type: 'Incident' | 'Alert' | 'Update';
@@ -30,21 +29,23 @@ const typeConfig = {
 };
 
 export default function ThreadLogs() {
+  
   const formatDate = (iso: string) => {
     const d = new Date(iso);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
   return (
-    <div className="min-h-screen bg-background pb-20">
-        <DashboardSidebar />
-      <div className="sticky top-0 z-40 bg-background/80 backdrop-blur-lg border-b border-border">
-        <div className="max-w-lg mx-auto px-4 py-4">
-          <h1 className="text-xl font-bold text-foreground">Thread Logs</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">Complete activity timeline</p>
-        </div>
-      </div>
+    <div className="flex min-h-screen bg-secondary/30">
+      <DashboardSidebar />
 
+      <main className="flex-1 p-6 lg:p-8 overflow-auto">
+        <div className="max-w-6xl mx-auto space-y-6 pl-10">
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+            <h1 className="text-2xl font-bold text-foreground mb-1 ">Thread Logs</h1>
+            <p className="text-muted-foreground text-sm">Complete activity timeline</p>
+          </motion.div>
+          </div>
       <div className="max-w-lg mx-auto px-4 py-4">
         {/* Timeline */}
         <div className="relative">
@@ -79,8 +80,11 @@ export default function ThreadLogs() {
           </div>
         </div>
       </div>
+      
 
       <BottomNav />
+    </main>
     </div>
+
   );
 }

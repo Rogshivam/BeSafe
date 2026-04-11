@@ -53,14 +53,17 @@ export default function EmergencyContactsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-20">
-        <DashboardSidebar/>
-      <div className="sticky top-0 z-40 bg-background/80 backdrop-blur-lg border-b border-border">
-        <div className="max-w-lg mx-auto px-4 py-4">
-          <h1 className="text-xl font-bold text-foreground">Emergency Contacts</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">Quick access to your safety network</p>
-        </div>
-      </div>
+    <div className="flex min-h-screen bg-secondary/30">
+      <DashboardSidebar />
+
+      <main className="flex-1 p-6 lg:p-8 overflow-auto">
+        <div className="max-w-6xl mx-auto space-y-6 pl-10">
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+            <h1 className="text-2xl font-bold text-foreground mb-1 ">Emergency Contacts</h1>
+            <p className="text-muted-foreground text-sm">Quick access to your safety network</p>
+          </motion.div>
+          </div>
+    
 
       <div className="max-w-lg mx-auto px-4 py-4 space-y-3">
         {/* Bulk Alert */}
@@ -140,6 +143,7 @@ export default function EmergencyContactsPage() {
       )}
 
       <BottomNav />
+      </main>
     </div>
   );
 }

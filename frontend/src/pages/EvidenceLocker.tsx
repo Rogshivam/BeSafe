@@ -17,7 +17,7 @@ const EvidenceLocker = () => {
     <div className="flex min-h-screen bg-secondary/30">
       <DashboardSidebar />
       <main className="flex-1 p-6 lg:p-8 overflow-auto">
-        <div className="max-w-6xl mx-auto space-y-6">
+        <div className="max-w-6xl mx-auto space-y-6 pl-10">
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
             <h1 className="text-2xl font-bold text-foreground mb-1">Evidence Locker</h1>
             <p className="text-muted-foreground text-sm">Securely stored evidence files</p>

@@ -48,7 +48,7 @@ export interface User {
   name: string;
   email: string;
   phone: string;
-  userType: 'Individual' | 'Member';
+  userType: 'Individual' | 'Member' | 'Adult' | 'Parent' | 'Child';
   age?: number;
   status: 'Safe' | 'Alert' | 'Emergency';
   currentLocation?: {
@@ -74,7 +74,12 @@ export interface User {
 }
 
 export interface EmergencyContact {
-  memberId: string;
+  // memberId: string;
+  memberId: {
+    name: string;
+    phone?: string;
+    email?: string;
+  };
   memberName?: string;
   relation: 'Parent' | 'Friend' | 'Guardian' | 'Spouse' | 'Sibling' | 'Other';
   priority: 'High' | 'Medium' | 'Low';
@@ -98,14 +103,22 @@ export interface Emergency {
   audioRecording?: string;
   image?: string;
   notifiedMembers?: Array<{
-    memberId: string;
+    memberId: {
+      name: string;
+      phone?: string;
+      email?: string;
+    };
     memberName?: string;
     notifiedAt: string;
     response: 'Pending' | 'Help' | 'Ignore';
     respondedAt?: string;
   }>;
   responders?: Array<{
-    memberId: string;
+    memberId: {
+      name: string;
+      phone?: string;
+      email?: string;
+    };
     memberName?: string;
     joinedAt: string;
     status: 'On the way' | 'Arrived' | 'Left';
@@ -161,7 +174,7 @@ export const authAPI = {
     email: string;
     phone: string;
     password: string;
-    userType: 'Individual' | 'Member';
+    userType: 'Individual' | 'Member' |'Adult' | 'Parent' | 'Child';
     age?: number;
   }) => {
     const response = await api.post('/auth/register', userData);
@@ -194,7 +207,7 @@ export const authAPI = {
 
 // Users API
 export const usersAPI = {
-  searchUsers: async (query: string, userType?: 'Individual' | 'Member') => {
+  searchUsers: async (query: string, userType?: 'Individual' | 'Member' | 'Adult' | 'Parent' | 'Child') => {
     const params = new URLSearchParams({ query });
     if (userType) params.append('userType', userType);
     const response = await api.get(`/users/search?${params}`);
@@ -207,7 +220,12 @@ export const usersAPI = {
   },
 
   addEmergencyContact: async (contactData: {
-    memberId: string;
+    // memberId: string;
+    memberId: {
+    name: string;
+    phone?: string;
+    email?: string;
+  };
     relation: string;
     priority: string;
   }) => {

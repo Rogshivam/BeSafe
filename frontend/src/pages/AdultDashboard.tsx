@@ -17,7 +17,7 @@ const AdultDashboard = () => {
     <div className="flex min-h-screen bg-secondary/30">
       <DashboardSidebar />
       <main className="flex-1 p-6 lg:p-8 overflow-auto">
-        <div className="max-w-6xl mx-auto space-y-6">
+        <div className="max-w-6xl mx-auto space-y-6 pl-10">
           {/* Header */}
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-between items-start">
             <div>

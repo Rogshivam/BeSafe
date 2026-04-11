@@ -51,15 +51,16 @@ export default function IncidentReport() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-20">
-        <DashboardSidebar/>
-      {/* Header */}
-      <div className="sticky top-0 z-40 bg-background/80 backdrop-blur-lg border-b border-border">
-        <div className="max-w-lg mx-auto px-4 py-4">
-          <h1 className="text-xl font-bold text-foreground">Incident Reports</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">Track and report safety incidents</p>
-        </div>
-      </div>
+      <div className="flex min-h-screen bg-secondary/30">
+      <DashboardSidebar />
+
+      <main className="flex-1 p-6 lg:p-8 overflow-auto">
+        <div className="max-w-6xl mx-auto space-y-6 pl-10">
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+            <h1 className="text-2xl font-bold text-foreground mb-1 ">Incident Reports</h1>
+            <p className="text-muted-foreground text-sm">Track and report safety incidents</p>
+          </motion.div>
+          </div>
 
       {/* Incidents List */}
       <div className="max-w-lg mx-auto px-4 py-4 space-y-3">
@@ -145,6 +146,7 @@ export default function IncidentReport() {
       </AnimatePresence>
 
       <BottomNav />
+      </main>
     </div>
   );
 }

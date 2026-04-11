@@ -21,7 +21,6 @@ import EvidenceLocker from "./pages/EvidenceLocker";
 import NotFound from "./pages/NotFound";
 import Register from "./pages/Register";
 import ForgetPassword from "./components/forgetpassword";
-import ChangePassword from "./components/changepassword";
 import ResetPassword from "./components/ResetPassword";
 import  Monitoring from "./components/Monitoring"
 import IncidentReport from "./components/IncidentReport";
@@ -48,7 +47,7 @@ const App = () => (
 
             {/* logged-in only */}
             <Route element={<RequireAuth />}>
-              <Route path="/change-password" element={<ChangePassword />} />
+              
               <Route path="/dashboard/select" element={<DashboardSelect />} />
             </Route>
             
