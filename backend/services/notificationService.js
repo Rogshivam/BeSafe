@@ -1,249 +1,76 @@
-import nodemailer from 'nodemailer';
-import twilio from 'twilio';
-
+import nodemailer from "nodemailer";
+import dotenv from "dotenv";
+dotenv.config();
 class NotificationService {
   constructor() {
     this.emailTransporter = null;
-    this.twilioClient = null;
-    this.initializeServices();
+    this.initialize();
   }
 
-  initializeServices() {
-    // Initialize email service
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-      this.emailTransporter = nodemailer.createTransporter({
-        host: process.env.EMAIL_HOST,
-        port: process.env.EMAIL_PORT,
-        secure: false,
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS
-        }
-      });
+  initialize() {
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.warn("EMAIL_USER / EMAIL_PASS not set; email service disabled");
+      return;
     }
 
-    // Initialize Twilio service
-    if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
-      this.twilioClient = twilio(
-        process.env.TWILIO_ACCOUNT_SID,
-        process.env.TWILIO_AUTH_TOKEN
-      );
-    }
+    this.emailTransporter = nodemailer.createTransport({
+      host: process.env.EMAIL_HOST || "smtp.gmail.com",
+      port: parseInt(process.env.EMAIL_PORT || "587"),
+      secure: process.env.EMAIL_SECURE === "true",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
   }
 
-  async sendEmailNotification(to, subject, message, priority = 'Normal') {
-    try {
-      if (!this.emailTransporter) {
-        console.log('Email service not configured');
-        return false;
-      }
-
-      const mailOptions = {
-        from: process.env.EMAIL_USER,
-        to,
-        subject: this.getSubjectWithPriority(subject, priority),
-        html: this.getEmailTemplate(message, priority)
-      };
-
-      const result = await this.emailTransporter.sendMail(mailOptions);
-      console.log('Email sent successfully:', result.messageId);
-      return true;
-    } catch (error) {
-      console.error('Email send error:', error);
+  async sendPasswordResetEmail(email, resetToken) {
+    if (!this.emailTransporter || !process.env.EMAIL_USER) {
+      console.log("Email service not configured");
       return false;
     }
-  }
 
-  // async sendSMSNotification(to, message, priority = 'Normal') {
-  //   try {
-  //     if (!this.twilioClient || !process.env.TWILIO_PHONE_NUMBER) {
-  //       console.log('SMS service not configured');
-  //       return false;
-  //     }
+    const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
+    const resetLink = `${clientUrl}/reset-password/${resetToken}`;
 
-  //     const formattedMessage = this.getFormattedMessage(message, priority);
-      
-  //     const result = await this.twilioClient.messages.create({
-  //       body: formattedMessage,
-  //       from: process.env.TWILIO_PHONE_NUMBER,
-  //       to
-  //     });
-
-  //     console.log('SMS sent successfully:', result.sid);
-  //     return true;
-  //   } catch (error) {
-  //     console.error('SMS send error:', error);
-  //     return false;
-  //   }
-  // }
-
-  async sendEmergencyNotification(user, emergency, contacts) {
-    const notifications = [];
-
-    for (const contact of contacts) {
-      const priority = contact.priority;
-      const contactUser = contact.memberId;
-
-      // Prepare emergency message
-      const emergencyMessage = `
-🚨 EMERGENCY ALERT 🚨
-Name: ${user.name}
-Status: ${emergency.severity} Emergency
-Location: ${emergency.location.latitude}, ${emergency.location.longitude}
-Triggered: ${emergency.triggeredBy}
-Time: ${new Date().toLocaleString()}
-${emergency.message ? `Message: ${emergency.message}` : ''}
-      `;
-
-      // Send email if enabled
-      if (contactUser.notifications?.email && contactUser.email) {
-        const emailSent = await this.sendEmailNotification(
-          contactUser.email,
-          `Emergency Alert - ${user.name}`,
-          emergencyMessage,
-          'Urgent'
-        );
-        notifications.push({
-          type: 'email',
-          contactId: contactUser._id,
-          success: emailSent
-        });
-      }
-
-      // Send SMS if enabled
-      // if (contactUser.notifications?.sms && contactUser.phone) {
-      //   const smsSent = await this.sendSMSNotification(
-      //     contactUser.phone,
-      //     emergencyMessage,
-      //     'Urgent'
-      //   );
-      //   notifications.push({
-      //     type: 'sms',
-      //     contactId: contactUser._id,
-      //     success: smsSent
-      //   });
-      // }
-    }
-
-    return notifications;
-  }
-
-  async sendLocationUpdateNotification(user, location, contacts) {
-    const message = `
-📍 Location Update
-Name: ${user.name}
-New Location: ${location.latitude}, ${location.longitude}
-Time: ${new Date().toLocaleString()}
-${location.address ? `Address: ${location.address}` : ''}
-    `;
-
-    const notifications = [];
-
-    for (const contact of contacts) {
-      if (contact.memberId.notifications?.email && contact.memberId.email) {
-        const emailSent = await this.sendEmailNotification(
-          contact.memberId.email,
-          `Location Update - ${user.name}`,
-          message,
-          'Normal'
-        );
-        notifications.push({
-          type: 'email',
-          contactId: contact.memberId._id,
-          success: emailSent
-        });
-      }
-    }
-
-    return notifications;
-  }
-
-  getSubjectWithPriority(subject, priority) {
-    const prefixes = {
-      'Low': '',
-      'Normal': '',
-      'High': '[IMPORTANT] ',
-      'Urgent': '[URGENT] '
-    };
-    
-    return `${prefixes[priority] || ''}${subject}`;
-  }
-
-  getFormattedMessage(message, priority) {
-    const prefixes = {
-      'Low': '',
-      'Normal': '',
-      'High': 'IMPORTANT: ',
-      'Urgent': 'URGENT: '
-    };
-    
-    return `${prefixes[priority] || ''}${message}`;
-  }
-
-  getEmailTemplate(message, priority) {
-    const colors = {
-      'Low': '#28a745',
-      'Normal': '#007bff',
-      'High': '#ffc107',
-      'Urgent': '#dc3545'
-    };
-
-    const priorityColor = colors[priority] || colors['Normal'];
-
-    return `
+    const html = `
       <!DOCTYPE html>
       <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>VSafe Notification</title>
-      </head>
-      <body style="font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4;">
-        <div style="max-width: 600px; margin: 0 auto; background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-          <div style="background-color: ${priorityColor}; color: white; padding: 20px; text-align: center;">
-            <h1 style="margin: 0; font-size: 24px;">VSafe Notification</h1>
-            <p style="margin: 5px 0 0 0; opacity: 0.9;">Priority: ${priority}</p>
-          </div>
-          <div style="padding: 30px;">
-            <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px; border-left: 4px solid ${priorityColor};">
-              <pre style="margin: 0; white-space: pre-wrap; font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6;">${message}</pre>
-            </div>
-            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #666; font-size: 12px;">
-              <p>This is an automated message from VSafe Emergency Response System.</p>
-              <p>Received: ${new Date().toLocaleString()}</p>
-            </div>
-          </div>
+      <body style="font-family: sans-serif; padding: 20px; background:#f9fafb;">
+        <div style="max-width:560px;margin:auto;background:#fff;border-radius:8px;padding:20px;">
+          <h2>Password Reset</h2>
+          <p>Click below to reset your password:</p>
+
+          <a href="${resetLink}" 
+             style="display:inline-block;padding:10px 16px;background:#059669;color:#fff;border-radius:6px;text-decoration:none;">
+            Reset Password
+          </a>
+
+          <p style="margin-top:20px;">Or copy link:</p>
+          <pre>${resetLink}</pre>
+
+          <p style="font-size:12px;color:gray;">Expires in 10 minutes</p>
         </div>
       </body>
       </html>
     `;
-  }
 
-  async testEmailService() {
-    if (!this.emailTransporter) {
-      return { success: false, message: 'Email service not configured' };
-    }
+    const mailOptions = {
+      from: `"Be-Safe Support" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Be-Safe – Password Reset",
+      html,
+    };
 
     try {
-      await this.emailTransporter.verify();
-      return { success: true, message: 'Email service is working' };
+      const info = await this.emailTransporter.sendMail(mailOptions);
+      console.log("Email sent:", info.messageId);
+      return true;
     } catch (error) {
-      return { success: false, message: error.message };
+      console.error("Email send error:", error);
+      return false;
     }
   }
-
-  // async testSMSService() {
-  //   if (!this.twilioClient) {
-  //     return { success: false, message: 'SMS service not configured' };
-  //   }
-
-  //   try {
-  //     const account = await this.twilioClient.api.accounts(process.env.TWILIO_ACCOUNT_SID).fetch();
-  //     return { success: true, message: 'SMS service is working', account: account.friendlyName };
-  //   } catch (error) {
-  //     return { success: false, message: error.message };
-  //   }
-  // }
 }
 
 export default new NotificationService();

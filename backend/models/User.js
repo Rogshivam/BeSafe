@@ -72,7 +72,7 @@ const userSchema = new mongoose.Schema({
   },
   userType: {
     type: String,
-    enum: ['Individual', 'Member'],
+    enum: ['Individual', 'Member', 'Parent', 'Child'],
     required: true
   },
   status: {

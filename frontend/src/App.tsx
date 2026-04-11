@@ -23,7 +23,11 @@ import Register from "./pages/Register";
 import ForgetPassword from "./components/forgetpassword";
 import ChangePassword from "./components/changepassword";
 import ResetPassword from "./components/ResetPassword";
-
+import  Monitoring from "./components/Monitoring"
+import IncidentReport from "./components/IncidentReport";
+import EmergencyContactsPage from "./components/EmergencyContactsPage";
+import ThreadLogs from "./components/ThreadLogs";
+import SettingsPage from "./components/SettingsPage";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -46,8 +50,15 @@ const App = () => (
             <Route element={<RequireAuth />}>
               <Route path="/change-password" element={<ChangePassword />} />
               <Route path="/dashboard/select" element={<DashboardSelect />} />
-              <Route path="/evidence-locker" element={<EvidenceLocker />} />
             </Route>
+            
+            {/* sidebar only */}
+            <Route path="/evidence-locker" element={<EvidenceLocker />} />
+            <Route path="/dashboard/parent/monitoring" element={<Monitoring />} />
+            <Route path="/incidents" element={<IncidentReport />} />
+            <Route path="/emergency-contacts" element={<EmergencyContactsPage />} />
+            <Route path="/thread-logs" element={<ThreadLogs />} />
+            <Route path="/settings" element={<SettingsPage />} />
 
             {/* adult only */}
             <Route element={<RequireRole allowedRoles={["adult"]} />}>

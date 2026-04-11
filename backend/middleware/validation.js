@@ -21,10 +21,10 @@ const validateRegister = [
     .isLength({ min: 6 })
     .withMessage('Password must be at least 6 characters long'),
   
-  body('userType')
-    .isIn(['Individual', 'Member'])
-    .withMessage('User type must be either Individual or Member'),
-  
+ body('userType')
+  .isIn(['Individual', 'Member', 'Parent', 'Child'])
+  .withMessage('User type must be Individual, Member, Parent, or Child'),
+
   body('age')
     .optional()
     .isInt({ min: 1, max: 120 })

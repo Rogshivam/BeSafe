@@ -26,15 +26,16 @@ const RequireParentMember = () => {
       return;
     }
 
-    if (!linkedMemberId) {
-      toast.error("Parent Dashboard is available only if a member is linked to your account.");
-      navigate("/dashboard/select", { replace: true });
-    }
-  }, [isAuthenticated, role, linkedMemberId, navigate, location]);
+    // if (!linkedMemberId) {
+    //   toast.error("Parent Dashboard is available only if a member is linked to your account.");
+    //   navigate("/dashboard/select", { replace: true });
+    // }
+    // linkedMemberId
+  }, [isAuthenticated, role,  navigate, location]);
 
   if (!isAuthenticated) return null;
   if (role !== "parent") return null;
-  if (!linkedMemberId) return null;
+  // if (!linkedMemberId) return null;
 
   return <Outlet />;
 };

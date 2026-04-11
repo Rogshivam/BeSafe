@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { ShieldCheck, User, Users, Baby, Eye, EyeOff } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import CurrentDate from "@/components/Date";
-
+import { toast } from "sonner";
 type Role = "adult" | "parent" | "child";
 
 const roles: { value: Role; label: string; icon: any }[] = [
@@ -39,41 +39,47 @@ const Register = () => {
   };
 
   const handleRegister = async (e: any) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    try {
-      const res = await fetch(`${apiUrl}/auth/register`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...form,
-          age: Number(form.age),
-          userType: roleMap[selectedRole],
-        }),
-      });
+  try {
+    const res = await fetch(`${apiUrl}/auth/register`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...form,
+        age: Number(form.age),
+        userType: roleMap[selectedRole],
+      }),
+    });
 
-      const data = await res.json();
+    const data = await res.json();
 
-      if (!data.success) {
-        alert(data.message);
-        return;
-      }
-      if (Number(form.age) <= 0) {
-        alert("Invalid age");
-        return;
-      }
-
-      localStorage.setItem("token", data.data.token);
-      alert("Registered successfully");
-
-      navigate("/login");
-    } catch (error) {
-      console.error(error);
-      alert("Registration failed");
+    // ❗ API error handling
+    if (!res.ok) {
+      toast.error(data?.message || "Registration failed");
+      return;
     }
-  };
+
+    const token = data?.data?.token;
+
+    if (token) {
+      localStorage.setItem("token", token);
+    }
+
+    toast.success("Registered successfully 🎉");
+
+    setTimeout(() => {
+      navigate("/login");
+    }, 1500);
+
+  } catch (error) {
+    console.error(error);
+
+    toast.error("Server error. Please try again.");
+  }
+};
 
   return (
     <div className="min-h-screen bg-background">
