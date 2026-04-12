@@ -4,7 +4,7 @@ import { FileText, Phone, Clock, Settings } from 'lucide-react';
 const navItems = [
   { path: '/incidents', label: 'Incidents', icon: FileText },
   { path: '/emergency-contacts', label: 'Contacts', icon: Phone },
-  { path: '/thread-logs', label: 'Logs', icon: Clock },
+  // { path: '/thread-logs', label: 'Logs', icon: Clock },
   { path: '/settings', label: 'Settings', icon: Settings },
 ];
 

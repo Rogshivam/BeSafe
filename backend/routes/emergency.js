@@ -40,63 +40,78 @@ const upload = multer({
 });
 
 // Trigger emergency
-router.post('/trigger', 
-  auth, 
+router.post(
+  '/trigger',
+  auth,
   authorize('Individual'),
   upload.fields([
     { name: 'image', maxCount: 1 },
     { name: 'audio', maxCount: 1 }
   ]),
-  validateEmergency, 
-  handleValidationErrors, 
+  validateEmergency,
+  handleValidationErrors,
   async (req, res) => {
     try {
-      const { triggeredBy, latitude, longitude, severity, message } = req.body;
-      
+      const {
+  triggeredBy,
+  latitude,
+  longitude,
+  severity,
+  message,
+  title,
+  description
+} = req.body;
+
       const io = req.app.get('io');
-      
-      // Get user with emergency contacts
-      const user = await User.findById(req.user.id).populate('emergencyContacts.memberId');
-      
-      if (!user.emergencyContacts || user.emergencyContacts.length === 0) {
+
+      const user = await User.findById(req.user.id)
+        .populate('emergencyContacts.memberId');
+
+      if (!user.emergencyContacts?.length) {
         return res.status(400).json({
           success: false,
           message: 'No emergency contacts configured'
         });
       }
 
-      // Create emergency record
       const emergency = new Emergency({
-        individualId: req.user.id,
-        triggeredBy,
-        location: {
-          latitude: parseFloat(latitude),
-          longitude: parseFloat(longitude),
-          address: req.body.address || '',
-          accuracy: req.body.accuracy ? parseFloat(req.body.accuracy) : 0
-        },
-        severity: severity || 'Medium',
-        message: message || '',
-        image: req.files && req.files.image ? `/uploads/emergency/${req.files.image[0].filename}` : '',
-        audioRecording: req.files && req.files.audio ? `/uploads/emergency/${req.files.audio[0].filename}` : ''
+  individualId: req.user.id,
+  triggeredBy,
+  location: {
+    latitude: parseFloat(latitude),
+    longitude: parseFloat(longitude),
+    address: req.body.address || '',
+  },
+  severity: severity || 'Medium',
+
+  title: title || 'Emergency',
+  description: description || message || '',
+  message: message || description || '',
+        image: req.files?.image?.[0]
+          ? `/uploads/emergency/${req.files.image[0].filename}`
+          : '',
+        audioRecording: req.files?.audio?.[0]
+          ? `/uploads/emergency/${req.files.audio[0].filename}`
+          : ''
       });
 
-      // Add initial timeline event
-      emergency.addTimelineEvent('Emergency Triggered', req.user.id, `Triggered by: ${triggeredBy}`);
+      emergency.addTimelineEvent(
+        'Emergency Triggered',
+        req.user.id,
+        `Triggered by: ${triggeredBy}`
+      );
 
-      await emergency.save();
+      await emergency.save(); // ✅ ONLY SAVE HERE
 
-      // Update user status to Emergency
       user.status = 'Emergency';
       await user.save();
 
-      // Notify emergency contacts based on priority
       const notifications = [];
-      
+
       for (const contact of user.emergencyContacts) {
         await emergency.notifyMember(contact.memberId._id);
-        
-        const notificationData = {
+
+        io.to(contact.memberId._id.toString()).emit('emergency-alert', {
           emergencyId: emergency._id,
           individualId: req.user.id,
           individualName: user.name,
@@ -106,10 +121,7 @@ router.post('/trigger',
           message: emergency.message,
           priority: contact.priority,
           relation: contact.relation
-        };
-
-        // Send real-time notification via Socket.io
-        io.to(contact.memberId._id.toString()).emit('emergency-alert', notificationData);
+        });
 
         notifications.push({
           memberId: contact.memberId._id,
@@ -117,32 +129,6 @@ router.post('/trigger',
           priority: contact.priority,
           relation: contact.relation,
           notified: true
-        });
-      }
-
-      // Send system message to all emergency contacts
-      for (const contact of user.emergencyContacts) {
-        const systemMessage = new Message({
-          senderId: req.user.id,
-          receiverId: contact.memberId._id,
-          emergencyId: emergency._id,
-          messageType: 'System',
-          content: `🚨 EMERGENCY ALERT: ${user.name} has triggered an emergency alert. Location: ${latitude}, ${longitude}. Severity: ${emergency.severity}`,
-          priority: 'Urgent'
-        });
-        
-        await systemMessage.save();
-        
-        // Send real-time message
-        io.to(contact.memberId._id.toString()).emit('new-message', {
-          id: systemMessage._id,
-          senderId: req.user.id,
-          senderName: user.name,
-          content: systemMessage.content,
-          messageType: 'System',
-          priority: 'Urgent',
-          emergencyId: emergency._id,
-          createdAt: systemMessage.createdAt
         });
       }
 
@@ -155,6 +141,7 @@ router.post('/trigger',
           notifiedContacts: notifications
         }
       });
+
     } catch (error) {
       console.error('Emergency trigger error:', error);
       res.status(500).json({
@@ -164,6 +151,46 @@ router.post('/trigger',
     }
   }
 );
+//updating emergency status
+router.put('/:emergencyId/status', auth, authorize('Member', 'Individual'), async (req, res) => {
+  try {
+    const { emergencyId } = req.params;
+    const { status } = req.body;
+
+    const emergency = await Emergency.findById(emergencyId);
+
+    if (!emergency) {
+      return res.status(404).json({
+        success: false,
+        message: 'Emergency not found'
+      });
+    }
+
+    emergency.status = status;
+
+    emergency.addTimelineEvent(
+      'Status Updated',
+      req.user.id,
+      `Changed to ${status}`
+    );
+
+    await emergency.save();
+
+    res.json({
+      success: true,
+      message: 'Status updated',
+      data: { emergency }
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update status'
+    });
+  }
+});
+
 
 // Get active emergencies for a member
 router.get('/active', auth, authorize('Member'), async (req, res) => {
@@ -407,28 +434,100 @@ router.post('/:emergencyId/resolve', auth, async (req, res) => {
   }
 });
 
+
+// Method to record member response edit
+router.put('/:emergencyId/edit', auth, async (req, res) => {
+  try {
+    const { title, description, address } = req.body;
+
+    const emergency = await Emergency.findById(req.params.emergencyId);
+    if (!emergency) {
+      return res.status(404).json({ message: 'Not found' });
+    }
+emergency.title = `${title}`;
+    emergency.message = `${description}`;
+    emergency.location.address = address;
+
+    await emergency.save();
+
+    res.json({
+      success: true,
+      data: emergency
+    });
+
+  } catch (err) {
+    res.status(500).json({ message: 'Edit failed' });
+  }
+});
+//edit emergency details (title, description, location) - only by individual who triggered it
+router.put('/:emergencyId', auth, authorize('Individual'), upload.fields([
+  { name: 'image', maxCount: 1 },
+  { name: 'audio', maxCount: 1 }
+]), async (req, res) => {
+  try {
+    const { emergencyId } = req.params;
+
+    const emergency = await Emergency.findById(emergencyId);
+    if (!emergency) {
+      return res.status(404).json({ success: false, message: 'Not found' });
+    }
+
+    // update fields
+    if (req.body.title) emergency.title = req.body.title;
+    if (req.body.description) emergency.description = req.body.description;
+    if (req.body.location) {
+      emergency.location.address = req.body.location;
+    }
+
+    // 🔥 REPLACE FILE (important)
+    if (req.files?.image?.[0]) {
+      emergency.image = `/uploads/emergency/${req.files.image[0].filename}`;
+    }
+
+    if (req.files?.audio?.[0]) {
+      emergency.audioRecording = `/uploads/emergency/${req.files.audio[0].filename}`;
+    }
+
+    emergency.addTimelineEvent(
+      'Updated',
+      req.user.id,
+      'Emergency updated by user'
+    );
+
+    await emergency.save();
+
+    res.json({
+      success: true,
+      data: emergency
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
+});
+
 // Get user's emergency history
 router.get('/history/:userId', auth, async (req, res) => {
   try {
-    const { userId } = req.params;
+    let { userId } = req.params;
 
-    // Check if user can access this history
-    if (userId !== req.user.id) {
-      // Check if requesting user is an emergency contact
-      const targetUser = await User.findById(userId);
-      const isEmergencyContact = targetUser.emergencyContacts.some(
-        contact => contact.memberId.toString() === req.user.id
-      );
-
-      if (!isEmergencyContact) {
-        return res.status(403).json({
-          success: false,
-          message: 'Access denied'
-        });
-      }
+    // ✅ HANDLE "me" BEFORE ANY DB CALL
+    if (userId === 'me') {
+      userId = req.user.id;
     }
 
-    const emergencies = await Emergency.findUserEmergencies(userId)
+    // ✅ SAFETY: prevent invalid ObjectId crash
+    if (!userId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid userId'
+      });
+    }
+
+    const emergencies = await Emergency.find({
+      individualId: userId
+    })
       .sort({ createdAt: -1 })
       .limit(50);
 
@@ -436,6 +535,7 @@ router.get('/history/:userId', auth, async (req, res) => {
       success: true,
       data: { emergencies }
     });
+
   } catch (error) {
     console.error('Get emergency history error:', error);
     res.status(500).json({

@@ -174,7 +174,7 @@ export const authAPI = {
     email: string;
     phone: string;
     password: string;
-    userType: 'Individual' | 'Member' |'Adult' | 'Parent' | 'Child';
+    userType: 'Individual' | 'Member' | 'Adult' | 'Parent' | 'Child';
     age?: number;
   }) => {
     const response = await api.post('/auth/register', userData);
@@ -222,10 +222,10 @@ export const usersAPI = {
   addEmergencyContact: async (contactData: {
     // memberId: string;
     memberId: {
-    name: string;
-    phone?: string;
-    email?: string;
-  };
+      name: string;
+      phone?: string;
+      email?: string;
+    };
     relation: string;
     priority: string;
   }) => {
@@ -265,13 +265,15 @@ export const emergencyAPI = {
     longitude: number;
     severity?: string;
     message?: string;
+    title?: string;        // ✅ ADD THIS
+    description?: string;  // ✅ ADD THIS
     address?: string;
     accuracy?: number;
   }, files?: { image?: File; audio?: File }) => {
     const formData = new FormData();
     Object.entries(emergencyData).forEach(([key, value]) => {
-      if (value !== undefined) {
-        formData.append(key, value.toString());
+      if (value !== undefined && value !== null && value !== '') {
+        formData.append(key, String(value));
       }
     });
 
@@ -310,8 +312,22 @@ export const emergencyAPI = {
     return response.data;
   },
 
-  getEmergencyHistory: async (userId: string): Promise<{ success: boolean; data: { emergencies: Emergency[] } }> => {
-    const response = await api.get(`/emergency/history/${userId}`);
+  getEmergencyHistory: async (): Promise<{ success: boolean; data: { emergencies: Emergency[] } }> => {
+    const response = await api.get(`/emergency/history/me`);
+    return response.data;
+  },
+  updateEmergency: async (id: string, formData: FormData) => {
+    const response = await api.put(`/emergency/${id}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+  updateEmergencyStatus: async (id: string, status: string) => {
+    const response = await api.put(`/emergency/${id}/status`, {
+      status
+    });
     return response.data;
   },
 };
@@ -400,7 +416,7 @@ export const communicationAPI = {
     const params = new URLSearchParams();
     if (limit) params.append('limit', limit.toString());
     if (page) params.append('page', page.toString());
-    
+
     const response = await api.get(`/communication/conversation/${userId}?${params}`);
     return response.data;
   },

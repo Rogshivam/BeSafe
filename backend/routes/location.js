@@ -123,60 +123,112 @@ router.get('/:userId/current', auth, async (req, res) => {
 });
 
 // Get location history (last 5-10 minutes of movement)
-router.get('/:userId/history', auth, async (req, res) => {
+// router.get('/:userId/history', auth, async (req, res) => {
+//   try {
+//     const { userId } = req.params;
+//     const { minutes = 10 } = req.query;
+
+//     // Check if requesting user is an emergency contact of target user
+//     const targetUser = await User.findById(userId);
+    
+//     if (!targetUser) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'User not found'
+//       });
+//     }
+
+//     const isEmergencyContact = targetUser.emergencyContacts.some(
+//       contact => contact.memberId.toString() === req.user.id
+//     );
+
+//     if (!isEmergencyContact && userId !== req.user.id) {
+//       return res.status(403).json({
+//         success: false,
+//         message: 'Access denied. You are not an emergency contact of this user.'
+//       });
+//     }
+
+//     // Only provide location history if user is in emergency status
+//     if (targetUser.status !== 'Emergency' && userId !== req.user.id) {
+//       return res.status(403).json({
+//         success: false,
+//         message: 'Location history is only available during emergencies'
+//       });
+//     }
+
+//     // Get location history for specified minutes
+//     const timeThreshold = new Date(Date.now() - (parseInt(minutes) * 60 * 1000));
+    
+//     const locationHistory = targetUser.locationHistory
+//       .filter(location => location.timestamp >= timeThreshold)
+//       .sort((a, b) => b.timestamp - a.timestamp);
+
+//     res.json({
+//       success: true,
+//       data: {
+//         locationHistory,
+//         timeRange: `${minutes} minutes`,
+//         totalPoints: locationHistory.length
+//       }
+//     });
+//   } catch (error) {
+//     console.error('Get location history error:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Server error fetching location history'
+//     });
+//   }
+// });
+
+//history of emergencies for a user
+router.get('/history/:userId', auth, async (req, res) => {
   try {
-    const { userId } = req.params;
-    const { minutes = 10 } = req.query;
+    let { userId } = req.params;
 
-    // Check if requesting user is an emergency contact of target user
-    const targetUser = await User.findById(userId);
-    
-    if (!targetUser) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+    // ✅ HANDLE "me" BEFORE ANY DB CALL
+    if (userId === 'me') {
+      userId = req.user.id;
     }
 
-    const isEmergencyContact = targetUser.emergencyContacts.some(
-      contact => contact.memberId.toString() === req.user.id
-    );
+    // ❌ DO NOT call findById before this fix
+    // const user = await User.findById(userId); ← optional
 
-    if (!isEmergencyContact && userId !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. You are not an emergency contact of this user.'
-      });
-    }
-
-    // Only provide location history if user is in emergency status
-    if (targetUser.status !== 'Emergency' && userId !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'Location history is only available during emergencies'
-      });
-    }
-
-    // Get location history for specified minutes
-    const timeThreshold = new Date(Date.now() - (parseInt(minutes) * 60 * 1000));
-    
-    const locationHistory = targetUser.locationHistory
-      .filter(location => location.timestamp >= timeThreshold)
-      .sort((a, b) => b.timestamp - a.timestamp);
+    const emergencies = await Emergency.find({
+      individualId: userId
+    }).sort({ createdAt: -1 });
 
     res.json({
       success: true,
-      data: {
-        locationHistory,
-        timeRange: `${minutes} minutes`,
-        totalPoints: locationHistory.length
-      }
+      data: { emergencies }
     });
+
   } catch (error) {
-    console.error('Get location history error:', error);
+    console.error('Get emergency history error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error fetching location history'
+      message: 'Server error fetching emergency history'
+    });
+  }
+});
+
+// Get emergency history for current user (profile)
+router.get('/history/me', auth, async (req, res) => {
+  try {
+    const emergencies = await Emergency.find({
+      individualId: req.user.id
+    }).sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      data: { emergencies }
+    });
+
+  } catch (error) {
+    console.error('Get emergency history error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error fetching emergency history'
     });
   }
 });

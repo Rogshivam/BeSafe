@@ -39,6 +39,14 @@ const emergencySchema = new mongoose.Schema({
       default: 0
     }
   },
+  title: {
+  type: String,
+  default: ''
+},
+description: {
+  type: String,
+  default: ''
+},
   message: {
     type: String,
     maxlength: [500, 'Message cannot exceed 500 characters']
@@ -123,14 +131,15 @@ emergencySchema.index({ createdAt: -1 });
 emergencySchema.index({ 'location.latitude': 1, 'location.longitude': 1 });
 
 // Method to add timeline event
-emergencySchema.methods.addTimelineEvent = function(action, userId, details = '') {
+emergencySchema.methods.addTimelineEvent = function (action, userId, details = '') {
   this.timeline.push({
     action,
     userId,
     details,
     timestamp: new Date()
   });
-  return this.save();
+
+  return this; // ✅ FIXED (NO this())
 };
 
 // Method to notify member
@@ -181,9 +190,14 @@ emergencySchema.methods.resolveEmergency = async function(resolvedBy, resolution
   this.resolvedAt = new Date();
   this.resolvedBy = resolvedBy;
   this.resolutionNotes = resolutionNotes;
-  
-  await this.addTimelineEvent('Emergency Resolved', resolvedBy, resolutionNotes);
-  return this.save();
+
+  this.addTimelineEvent(
+    'Emergency Resolved',
+    resolvedBy,
+    resolutionNotes
+  );
+
+  return await this.save();
 };
 
 // Static method to find active emergencies

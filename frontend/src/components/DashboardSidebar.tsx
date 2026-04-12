@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 const sidebarItems = [
   { title: 'Dashboard', icon: LayoutDashboard, url: '' },          // will expand to `/dashboard/[role]`
   { title: 'Evidence Locker', icon: FolderLock, url: '/evidence-locker' },
-  { title: 'Threat Logs', icon: FileWarning, url: '/thread-logs' },
+  // { title: 'Threat Logs', icon: FileWarning, url: '/thread-logs' },
   { title: 'Incident Reports', icon: FileText, url: '/incidents' },
   { title: 'Emergency Contacts', icon: Users, url: '/emergency-contacts' },
   { title: 'Settings', icon: Settings, url: '/settings' },

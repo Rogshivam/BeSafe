@@ -1,8 +1,13 @@
-import { useState } from 'react';
-import { Plus, X, MapPin, Clock, CheckCircle, AlertCircle, Upload, Image, Video } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import {
+  Plus, X, MapPin, Clock, CheckCircle,
+  AlertCircle, Upload, Image, Video
+} from 'lucide-react';
 import { BottomNav } from '@/components/BottomNav';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DashboardSidebar } from './DashboardSidebar';
+import { emergencyAPI } from '@/services/api'; // ✅ use your axios layer
+
 interface Incident {
   id: string;
   title: string;
@@ -14,138 +19,554 @@ interface Incident {
   mediaName?: string;
 }
 
-const dummyIncidents: Incident[] = [
-  { id: '1', title: 'Suspicious Person Near School', description: 'An unknown individual was seen loitering near the school entrance for over 30 minutes.', location: 'Lincoln Elementary School', timestamp: '2026-04-10T09:15:00', status: 'Open' },
-  { id: '2', title: 'Broken Street Light', description: 'The street light on Oak Avenue is broken, making the area very dark at night.', location: 'Oak Avenue & 5th St', timestamp: '2026-04-09T18:30:00', status: 'Open' },
-  { id: '3', title: 'Verbal Harassment at Park', description: 'Was verbally harassed by a group while jogging. Reported to local authorities.', location: 'Riverside Park', timestamp: '2026-04-08T07:45:00', status: 'Resolved' },
-  { id: '4', title: 'Lost Child Found', description: 'A 6-year-old was found alone near the mall. Reunited with parents after contacting security.', timestamp: '2026-04-07T14:20:00', status: 'Resolved' },
-];
-
 export default function IncidentReport() {
-  const [incidents, setIncidents] = useState<Incident[]>(dummyIncidents);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ title: '', description: '', location: '' });
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
+  const [editIncident, setEditIncident] = useState<Incident | null>(null);
+  // const [isEditMode, setIsEditMode] = useState(false);
+  const [form, setForm] = useState({
+    title: '',
+    description: '',
+    location: ''
+  });
 
-  const handleSubmit = () => {
+
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [newFile, setNewFile] = useState<File | null>(null);
+  const [editFile, setEditFile] = useState<File | null>(null);
+  // ✅ Fetch emergencies → map to incidents
+  const fetchIncidents = async () => {
+    try {
+      const res = await emergencyAPI.getEmergencyHistory();
+
+      const mapped = res.data.emergencies.map((e: any) => ({
+        id: e._id || e.id,
+        title: e.title || e.message || "Untitled Incident",
+        description: e.description || e.message || "No description",
+        location: e.location?.address,
+        timestamp: e.createdAt,
+
+        status: (e.status === 'Resolved'
+          ? 'Resolved'
+          : 'Open') as 'Open' | 'Resolved',
+
+        mediaType: e.image
+          ? ('image' as const)
+          : e.audioRecording
+            ? ('video' as const)
+            : undefined,
+
+        mediaName: e.image || e.audioRecording
+      }));
+      setIncidents(mapped);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    fetchIncidents();
+  }, []);
+
+  // ✅ Submit → trigger emergency API
+  const handleSubmit = async () => {
     if (!form.title || !form.description) return;
-    const newIncident: Incident = {
-      id: Date.now().toString(),
-      title: form.title,
-      description: form.description,
-      location: form.location || undefined,
-      timestamp: new Date().toISOString(),
-      status: 'Open',
-      mediaType: selectedFile?.type.startsWith('video') ? 'video' : selectedFile ? 'image' : undefined,
-      mediaName: selectedFile?.name,
-    };
-    setIncidents(prev => [newIncident, ...prev]);
-    setForm({ title: '', description: '', location: '' });
-    setSelectedFile(null);
-    setShowForm(false);
+
+    try {
+      setLoading(true);
+
+      await emergencyAPI.triggerEmergency(
+        {
+          triggeredBy: 'Manual',
+          latitude: 28.6139,
+          longitude: 77.2090,
+          title: form.title,          // ✅ ADD THIS
+          description: form.description, // ✅ ADD THIS
+          message: form.description,  // optional (can keep)
+          address: form.location,
+          severity: 'Medium'
+        },
+        {
+          image: selectedFile || undefined
+        }
+      );;
+
+      await fetchIncidents();
+
+      setForm({ title: '', description: '', location: '' });
+      setSelectedFile(null);
+      setShowForm(false);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to submit report');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Add location handler
+  const getCurrentLocation = async () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation not supported");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+
+        try {
+          // 🔥 Use reverse geocoding (OpenStreetMap free API)
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`
+          );
+          const data = await res.json();
+
+          const address =
+            data.display_name ||
+            `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+
+          setForm((prev) => ({
+            ...prev,
+            location: address,
+          }));
+        } catch (err) {
+          console.error(err);
+          setForm((prev) => ({
+            ...prev,
+            location: `${latitude}, ${longitude}`,
+          }));
+        }
+      },
+      (error) => {
+        console.error(error);
+        alert("Location permission denied. Please enter manually.");
+      }
+    );
   };
 
   const formatDate = (iso: string) => {
     const d = new Date(iso);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+  // ✅ FIXED STATUS UPDATE (your API route)
+  const toggleStatus = async (incident: Incident) => {
+    try {
+      const newStatus =
+        incident.status === 'Open' ? 'Resolved' : 'Active';
+
+      await emergencyAPI.updateEmergencyStatus(incident.id, newStatus);
+
+      setIncidents(prev =>
+        prev.map(i =>
+          i.id === incident.id
+            ? { ...i, status: newStatus === 'Resolved' ? 'Resolved' : 'Open' }
+            : i
+        )
+      );
+    } catch (err) {
+      console.error(err);
+    }
+  };
+  const handleEditSave = async () => {
+    if (!editIncident) return;
+
+    try {
+      const formData = new FormData();
+      formData.append('title', editIncident.title);
+      formData.append('description', editIncident.description);
+      formData.append('location', editIncident.location || '');
+
+      if (selectedFile) {
+        formData.append('image', selectedFile);
+      }
+
+      await emergencyAPI.updateEmergency(editIncident.id, formData);
+
+      await fetchIncidents();
+
+      setEditIncident(null);
+      setSelectedFile(null);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
+
   return (
-      <div className="flex min-h-screen bg-secondary/30">
+    <div className="flex min-h-screen bg-secondary/30">
       <DashboardSidebar />
 
       <main className="flex-1 p-6 lg:p-8 overflow-auto">
         <div className="max-w-6xl mx-auto space-y-6 pl-10">
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-            <h1 className="text-2xl font-bold text-foreground mb-1 ">Incident Reports</h1>
+            <h1 className="text-2xl font-bold text-foreground mb-1">Incident Reports</h1>
             <p className="text-muted-foreground text-sm">Track and report safety incidents</p>
           </motion.div>
-          </div>
+        </div>
 
-      {/* Incidents List */}
-      <div className="max-w-lg mx-auto px-4 py-4 space-y-3">
-        {incidents.map((inc, i) => (
-          <motion.div
-            key={inc.id}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05 }}
-            className="bg-card rounded-2xl shadow-depth p-4 space-y-2"
-          >
-            <div className="flex items-start justify-between">
-              <h3 className="font-semibold text-sm text-foreground leading-tight flex-1">{inc.title}</h3>
-              <span className={`ml-2 shrink-0 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                inc.status === 'Open'
-                  ? 'bg-destructive/10 text-destructive'
-                  : 'bg-[hsl(var(--safe))]/10 text-[hsl(var(--safe))]'
-              }`}>
-                {inc.status === 'Open' ? <AlertCircle className="w-3 h-3 inline mr-0.5 -mt-0.5" /> : <CheckCircle className="w-3 h-3 inline mr-0.5 -mt-0.5" />}
-                {inc.status}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground leading-relaxed">{inc.description}</p>
-            <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-              <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDate(inc.timestamp)}</span>
-              {inc.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{inc.location}</span>}
-            </div>
-            {inc.mediaName && (
-              <div className="flex items-center gap-1.5 text-[10px] text-primary font-medium">
-                {inc.mediaType === 'video' ? <Video className="w-3 h-3" /> : <Image className="w-3 h-3" />}
-                {inc.mediaName}
-              </div>
-            )}
-          </motion.div>
-        ))}
-      </div>
-
-      {/* FAB */}
-      <button
-        onClick={() => setShowForm(true)}
-        className="fixed bottom-20 right-4 z-40 w-14 h-14 rounded-full gradient-primary text-primary-foreground shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
-      >
-        <Plus className="w-6 h-6" />
-      </button>
-
-      {/* New Report Modal */}
-      <AnimatePresence>
-        {showForm && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-foreground/30 z-50" onClick={() => setShowForm(false)} />
+        {/* Incident List */}
+        <div className="max-w-lg mx-auto px-4 py-4 space-y-3">
+          {incidents.map((inc, i) => (
             <motion.div
-              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 z-50 bg-card rounded-t-3xl shadow-2xl max-h-[85vh] overflow-y-auto"
+              key={inc.id}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.05 }}
+              onClick={() => setSelectedIncident(inc)}
+              className="bg-card rounded-2xl shadow-depth p-4 space-y-2"
             >
-              <div className="max-w-lg mx-auto p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="font-bold text-lg text-foreground">New Report</h2>
-                  <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
-                </div>
-                <input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="Incident Title" className="w-full px-4 py-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="Describe what happened..." rows={3} className="w-full px-4 py-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none" />
-                <input value={form.location} onChange={e => setForm(p => ({ ...p, location: e.target.value }))} placeholder="Location (optional)" className="w-full px-4 py-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                
-                <label className="flex items-center gap-3 px-4 py-3 rounded-xl border border-dashed border-border bg-secondary/30 cursor-pointer hover:bg-secondary/50 transition-colors">
-                  <Upload className="w-5 h-5 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">{selectedFile ? selectedFile.name : 'Upload image or video'}</span>
-                  <input type="file" accept="image/*,video/*" className="hidden" onChange={e => setSelectedFile(e.target.files?.[0] || null)} />
-                </label>
-
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>Auto-timestamped: {new Date().toLocaleString()}</span>
-                </div>
-
-                <button onClick={handleSubmit} className="w-full py-3 gradient-primary text-primary-foreground rounded-xl font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all">
-                  Submit Report
+              <div className="flex justify-between">
+                <h3 className="font-semibold text-sm">{inc.title}</h3>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleStatus(inc);
+                  }}
+                  className={`px-2 py-0.5 text-[10px] rounded-full ${inc.status === 'Open'
+                    ? 'bg-red-100 text-red-600'
+                    : 'bg-green-100 text-green-600'
+                    }`}>
+                  {inc.status === 'Open'
+                    ? <AlertCircle className="inline w-3 h-3" />
+                    : <CheckCircle className="inline w-3 h-3" />}
+                  {inc.status}
                 </button>
               </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
 
-      <BottomNav />
+              <p className="text-xs text-muted-foreground">{inc.description}</p>
+
+              <div className="flex gap-3 text-[10px] text-muted-foreground">
+                <span className="flex gap-1">
+                  <Clock className="w-3 h-3" />
+                  {formatDate(inc.timestamp)}
+                </span>
+
+                {inc.location && (
+                  <span className="flex gap-1">
+                    <MapPin className="w-3 h-3" />
+                    {inc.location}
+                  </span>
+                )}
+
+              </div>
+
+              {inc.mediaName && (
+                <div className="flex gap-1 text-primary text-xs">
+                  {inc.mediaType === 'video'
+                    ? <Video className="w-3 h-3" />
+                    : <Image className="w-3 h-3" />}
+                  {inc.mediaName}
+                </div>
+              )}
+            </motion.div>
+          ))}
+        </div>
+
+        {/* FAB */}
+        <button
+          onClick={() => setShowForm(true)}
+          className="absolute right-4 top-10 z-30 w-11 h-11 rounded-full gradient-primary text-primary-foreground shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
+        >
+          <Plus />
+        </button>
+
+        {/* Modal */}
+        <AnimatePresence>
+          {showForm && (
+            <AnimatePresence>
+              <>
+                {/* Overlay */}
+                <motion.div
+                  className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setShowForm(false)}
+                />
+
+                {/* Modal */}
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 30 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 30 }}
+                  transition={{ duration: 0.2 }}
+                  className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                >
+                  <div
+                    className="w-full max-w-md bg-card rounded-2xl shadow-xl p-5 space-y-4"
+                    onClick={(e) => e.stopPropagation()} // ✅ prevent close when clicking inside
+                  >
+                    {/* Header */}
+                    <div className="flex justify-between items-center">
+                      <h2 className="text-lg font-semibold">Add Incident Report</h2>
+                      <button onClick={() => setShowForm(false)}>
+                        <X className="w-5 h-5 text-muted-foreground hover:text-foreground" />
+                      </button>
+                    </div>
+
+                    {/* Form */}
+                    <div className="space-y-3">
+                      <input
+                        placeholder="Title"
+                        value={form.title}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, title: e.target.value }))
+                        }
+                        className="w-full px-4 py-3 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/30 outline-none"
+                      />
+
+                      <textarea
+                        placeholder="Description"
+                        value={form.description}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, description: e.target.value }))
+                        }
+                        className="w-full px-4 py-3 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/30 outline-none"
+                        rows={3}
+                      />
+
+                      {/* <input
+              placeholder="Location"
+              value={form.location}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, location: e.target.value }))
+              }
+              className="w-full px-4 py-3 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/30 outline-none"
+            /> */}
+                      <div className="relative">
+                        <input
+                          placeholder="Location"
+                          value={form.location}
+                          onChange={(e) =>
+                            setForm((p) => ({ ...p, location: e.target.value }))
+                          }
+                          className="w-full pl-10 pr-10 py-3 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/30 outline-none"
+                        />
+
+                        {/* Left Icon */}
+                        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+
+                        {/* Right Clickable Icon */}
+                        <button
+                          type="button"
+                          onClick={getCurrentLocation}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-primary hover:scale-110"
+                        >
+                          📍
+                        </button>
+                      </div>
+
+                      {/* File Upload */}
+                      <div className="border border-dashed border-border rounded-xl p-3 text-center text-sm text-muted-foreground">
+                        <input
+                          type="file"
+                          onChange={(e) =>
+                            setSelectedFile(e.target.files?.[0] || null)
+                          }
+                          className="w-full"
+                        />
+                        {selectedFile && (
+                          <p className="mt-1 text-xs text-primary">
+                            {selectedFile.name}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowForm(false)}
+                        className="flex-1 py-3 rounded-xl border border-border text-sm"
+                      >
+                        Cancel
+                      </button>
+
+                      <button
+                        onClick={handleSubmit}
+                        disabled={loading}
+                        className="flex-1 py-3 rounded-xl gradient-primary text-white text-sm hover:opacity-90"
+                      >
+                        {loading ? 'Submitting...' : 'Submit'}
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              </>
+            </AnimatePresence>
+          )}
+
+        </AnimatePresence>
+        <AnimatePresence>
+          {editIncident && (
+            <>
+              <motion.div
+                className="fixed inset-0 bg-black/40 z-40"
+                onClick={() => setEditIncident(null)}
+              />
+
+              <motion.div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+                <div className="bg-card w-full max-w-md p-5 rounded-2xl space-y-3">
+
+                  <div className="flex justify-between">
+                    <h2 className="font-bold">Edit Report</h2>
+                    <button onClick={() => setEditIncident(null)}>
+                      <X />
+                    </button>
+                  </div>
+
+                  <input
+                    value={editIncident.title}
+                    onChange={(e) =>
+                      setEditIncident({
+                        ...editIncident,
+                        title: e.target.value
+                      })
+                    }
+                    className="w-full p-2 border rounded"
+                  />
+
+                  <textarea
+                    value={editIncident.description}
+                    onChange={(e) =>
+                      setEditIncident({
+                        ...editIncident,
+                        description: e.target.value
+                      })
+                    }
+                    className="w-full p-2 border rounded"
+                  />
+                  <textarea
+                    value={editIncident.location}
+                    onChange={(e) =>
+                      setEditIncident({
+                        ...editIncident,
+                        location: e.target.value
+                      })
+                    }
+                    className="w-full p-2 border rounded"
+                  />
+                  {/* <textarea
+                    value={editIncident.mediaName}
+                    onChange={(e) =>
+                      setEditIncident({
+                        ...editIncident,
+                        file: e.target.value
+                      })
+                    }
+                    className="w-full p-2 border rounded"
+                  /> */}
+                  {/* <div className="border border-dashed border-border rounded-xl p-3 text-center text-sm text-muted-foreground">
+                        <input
+                          type="file"
+                          onChange={(e) =>
+                            setSelectedFile(e.target.files?.[0] || null)
+                          }
+                          className="w-full"
+                        />
+                        {selectedFile && (
+                          <p className="mt-1 text-xs text-primary">
+                            {selectedFile.name}
+                          </p>
+                        )}
+                      </div> */}
+                  <div className="border border-dashed p-3 rounded-xl">
+                    <input
+                      type="file"
+                      onChange={(e) =>
+                        setSelectedFile(e.target.files?.[0] || null)
+                      }
+                    />
+
+                    {selectedFile && (
+                      <p className="text-xs text-primary mt-1">
+                        {selectedFile.name}
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={handleEditSave}
+                    className="w-full py-2 bg-primary text-white rounded-xl"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+        <AnimatePresence>
+          {selectedIncident && (
+            <>
+              <motion.div
+                className="fixed inset-0 bg-black/40 z-40"
+                onClick={() => setSelectedIncident(null)}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              />
+
+              <motion.div
+                className="fixed inset-0 flex items-center justify-center z-50 p-4"
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+              >
+                <div className="bg-card w-full max-w-md p-5 rounded-2xl space-y-3">
+                  {/* ✅ CLOSE BUTTON (FIXED) */}
+                  <div className="flex justify-between">
+                    <h2 className="font-bold">Edit Incident</h2>
+                    <button onClick={() => setSelectedIncident(null)}>
+                      <X />
+                    </button>
+                  </div>
+
+
+                  <h2 className="text-lg font-bold">
+                    {selectedIncident.title}
+                  </h2>
+
+                  <p className="text-sm">
+                    {selectedIncident.description}
+                  </p>
+
+                  <p className="text-xs text-muted-foreground">
+                    {selectedIncident.location}
+                  </p>
+
+                  {/* STATUS TOGGLE */}
+                  <button
+                    onClick={() => toggleStatus(selectedIncident)}
+                    className="w-full py-2 bg-primary text-white rounded-xl"
+                  >
+                    Mark as {selectedIncident.status === 'Open' ? 'Resolved' : 'Open'}
+                  </button>
+
+                  {/* EDIT BUTTON */}
+                  <button
+                    onClick={() => {
+                      setEditIncident(selectedIncident);
+                      setSelectedIncident(null); // close first modal
+                    }}
+                    className="w-full py-2 border rounded-xl"
+                  >
+                    Edit
+                  </button>
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+        <BottomNav />
       </main>
     </div>
   );

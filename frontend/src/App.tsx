@@ -56,7 +56,7 @@ const App = () => (
             <Route path="/dashboard/parent/monitoring" element={<Monitoring />} />
             <Route path="/incidents" element={<IncidentReport />} />
             <Route path="/emergency-contacts" element={<EmergencyContactsPage />} />
-            <Route path="/thread-logs" element={<ThreadLogs />} />
+            {/* <Route path="/thread-logs" element={<ThreadLogs />} /> */}
             <Route path="/settings" element={<SettingsPage />} />
 
             {/* adult only */}
