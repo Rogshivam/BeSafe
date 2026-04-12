@@ -332,6 +332,14 @@ export const emergencyAPI = {
   },
 };
 
+// Evidence API
+export const evidenceAPI = {
+  getAll: async () => {
+    const res = await api.get('/evidence');
+    return res.data;
+  },
+};
+
 // Location API
 export const locationAPI = {
   updateLocation: async (locationData: {

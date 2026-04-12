@@ -6,22 +6,25 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import emergencyRoutes from './routes/emergency.js';
 import locationRoutes from './routes/location.js';
 import communicationRoutes from './routes/communication.js';
-
+import evidenceRoutes from './routes/evidenceRoutes.js';
 dotenv.config();
 
 const app = express();
 const server = createServer(app);
+const isDevelopment = process.env.NODE_ENV === "development";
+
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
-    methods: ["GET", "POST"]
-  }
+    origin: isDevelopment
+      ? true                  // allow all origins in dev
+      : process.env.FRONTEND_URL || "http://localhost:3000",  // restrict in prod
+    methods: ["GET", "POST"],
+  },
 });
 
 // Rate limiting
@@ -73,12 +76,12 @@ app.use('/api/users', userRoutes);
 app.use('/api/emergency', emergencyRoutes);
 app.use('/api/location', locationRoutes);
 app.use('/api/communication', communicationRoutes);
-
+app.use('/api/evidence', evidenceRoutes);
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
-
+app.use('/uploads', express.static('uploads'));
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
