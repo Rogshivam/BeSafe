@@ -150,8 +150,14 @@ userSchema.index({ 'currentLocation.latitude': 1, 'currentLocation.longitude': 1
 
 // Middleware to update lastActive
 userSchema.pre('save', function(next) {
-  if (this.isModified() && !this.isNew) {
-    this.lastActive = new Date();
+  if (!this.isNew) {
+    const isOnlyResetTokenUpdate =
+      this.isModified('resetPasswordToken') ||
+      this.isModified('resetPasswordExpire');
+
+    if (!isOnlyResetTokenUpdate) {
+      this.lastActive = new Date();
+    }
   }
   next();
 });

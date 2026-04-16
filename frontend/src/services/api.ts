@@ -33,10 +33,16 @@ api.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401) {
-      // Token expired or invalid
+      // Token expired or invalid - clear auth data
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      localStorage.removeItem('role');
+      localStorage.removeItem('userName');
+      
+      // Only redirect if not already on login page
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
@@ -338,6 +344,44 @@ export const evidenceAPI = {
     const res = await api.get('/evidence');
     return res.data;
   },
+
+  uploadPhoto: async (file: File) => {
+    const formData = new FormData();
+    formData.append('photo', file);
+    const res = await api.post('/evidence/upload/photo', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return res.data;
+  },
+
+  uploadAudio: async (file: File) => {
+    const formData = new FormData();
+    formData.append('audio', file);
+    const res = await api.post('/evidence/upload/audio', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return res.data;
+  },
+
+  uploadScreenshot: async (file: File) => {
+    const formData = new FormData();
+    formData.append('screenshot', file);
+    const res = await api.post('/evidence/upload/screenshot', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return res.data;
+  },
+
+  saveLocation: async (locationData: { latitude: number; longitude: number; address?: string }) => {
+    const res = await api.post('/evidence/save/location', locationData);
+    return res.data;
+  },
 };
 
 // Location API
@@ -352,11 +396,14 @@ export const locationAPI = {
     return response.data;
   },
 
-  getCurrentLocation: async (userId: string): Promise<{ success: boolean; data: { location: Location; status: string; lastActive: string } }> => {
-    const response = await api.get(`/location/${userId}/current`);
-    return response.data;
-  },
-
+  // getCurrentLocation: async (userId: string): Promise<{ success: boolean; data: { location: Location; status: string; lastActive: string } }> => {
+  //   const response = await api.get(`/location/${userId}/current`);
+  //   return response.data;
+  // },
+getCurrentLocation: async (userId: string) => {
+  const response = await api.get(`/location/${userId}/current`);
+  return response.data;
+},
   getLocationHistory: async (userId: string, minutes?: number): Promise<{ success: boolean; data: { locationHistory: Location[]; timeRange: string; totalPoints: number } }> => {
     const params = minutes ? `?minutes=${minutes}` : '';
     const response = await api.get(`/location/${userId}/history${params}`);
@@ -387,9 +434,71 @@ export const locationAPI = {
     const response = await api.put('/location/sharing-preferences', preferences);
     return response.data;
   },
+  startTemporarySharing: async () => {
+  const response = await api.post('/location/share-temporary');
+  return response.data;
+},
+// stopSharing: async () => {
+//   const response = await api.put('/location/sharing-preferences', {
+//     shareWithEmergencyContacts: false,
+//     shareDuringEmergency: false
+//   });
+//   return response.data;
+// },
+stopSharing: async () => {
+  const res = await api.post('/location/stop-sharing');
+  return res.data;
+}
 };
 
-// Communication API
+// Relationship API
+export const relationshipAPI = {
+  sendRelationshipRequest: async (data: { targetUserId: string; relationshipType: string; requestMessage?: string; permissions?: any }) => {
+    const response = await api.post('/relationships/request', data);
+    return response.data;
+  },
+
+  getPendingRelationships: async () => {
+    const response = await api.get('/relationships/pending');
+    return response.data;
+  },
+
+  acceptRelationship: async (relationshipId: string, responseMessage?: string) => {
+    const response = await api.post(`/relationships/${relationshipId}/accept`, { responseMessage });
+    return response.data;
+  },
+
+  rejectRelationship: async (relationshipId: string, responseMessage?: string) => {
+    const response = await api.post(`/relationships/${relationshipId}/reject`, { responseMessage });
+    return response.data;
+  },
+
+  getActiveRelationships: async () => {
+    const response = await api.get('/relationships/active');
+    return response.data;
+  },
+
+  terminateRelationship: async (relationshipId: string, reason?: string) => {
+    const response = await api.delete(`/relationships/${relationshipId}`, { data: { reason } });
+    return response.data;
+  },
+
+  getChildLocations: async () => {
+    const response = await api.get('/relationships/child-locations');
+    return response.data;
+  },
+
+  getSentRelationships: async () => {
+    const response = await api.get('/relationships/sent');
+    return response.data;
+  },
+
+  updateRelationshipPermissions: async (relationshipId: string, permissions: any) => {
+    const response = await api.put(`/relationships/${relationshipId}/permissions`, { permissions });
+    return response.data;
+  },
+};
+
 export const communicationAPI = {
   sendMessage: async (messageData: {
     receiverId: string;

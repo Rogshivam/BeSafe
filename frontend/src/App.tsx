@@ -27,6 +27,8 @@ import IncidentReport from "./components/IncidentReport";
 import EmergencyContactsPage from "./components/EmergencyContactsPage";
 import ThreadLogs from "./components/ThreadLogs";
 import SettingsPage from "./components/SettingsPage";
+import ParentInfo from "./pages/ParentInfo";
+import ChildInfo from "./pages/ChildInfo";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -56,6 +58,9 @@ const App = () => (
             <Route path="/dashboard/parent/monitoring" element={<Monitoring />} />
             <Route path="/incidents" element={<IncidentReport />} />
             <Route path="/emergency-contacts" element={<EmergencyContactsPage />} />
+            <Route path="/parent-info" element={<ParentInfo />} />
+            <Route path="/child-info" element={<ChildInfo />} />
+
             {/* <Route path="/thread-logs" element={<ThreadLogs />} /> */}
             <Route path="/settings" element={<SettingsPage />} />
 

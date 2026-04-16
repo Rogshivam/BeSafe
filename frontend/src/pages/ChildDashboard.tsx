@@ -1,41 +1,161 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { DashboardSidebar } from '@/components/DashboardSidebar';
 import { ChatbotWidget } from '@/components/ChatbotWidget';
 import { EmergencyContacts } from '@/components/EmergencyContacts';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { MapPin, Phone, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { emergencyAPI, locationAPI, relationshipAPI, communicationAPI, getCurrentUser } from '@/services/api';
+import socketService from '@/services/socket';
 
 const ChildDashboard = () => {
   const [sosTriggered, setSosTriggered] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+const [isSharing, setIsSharing] = useState(false);
+  useEffect(() => {
+    // Get current user and connect to socket
+    const user = getCurrentUser();
+    if (user) {
+      setCurrentUser(user);
+      socketService.connect(user.id);
+    }
 
-  const triggerSOS = () => {
-    setSosTriggered(true);
-    // Call parent
-    window.open('tel:+1234567890', '_self');
-    // Also try to send SMS
-    const msg = encodeURIComponent('🚨 SOS ALERT! Your child needs help immediately!');
-    window.open(`sms:+1234567890?body=${msg}`, '_blank');
-    setTimeout(() => setSosTriggered(false), 5000);
+    let watchId: number;
+
+  if (navigator.geolocation) {
+    watchId = navigator.geolocation.watchPosition((pos) => {
+      const { latitude, longitude } = pos.coords;
+
+      setLocation({ latitude, longitude });
+
+      if (isSharing) { // ✅ only send when sharing
+        locationAPI.updateLocation({
+          latitude,
+          longitude,
+          accuracy: pos.coords.accuracy
+        });
+      }
+    });
+  }
+
+  return () => {
+    if (watchId) navigator.geolocation.clearWatch(watchId);
+  };
+    
+  }, [isSharing]);
+
+  const triggerSOS = async () => {
+    if (!currentUser || !location) {
+      alert('Unable to trigger emergency. Please ensure location is enabled.');
+      return;
+    }
+
+    try {
+      setSosTriggered(true);
+      
+      // Trigger emergency in backend
+      await emergencyAPI.triggerEmergency({
+        triggeredBy: 'Manual',
+        latitude: location.latitude,
+        longitude: location.longitude,
+        severity: 'High',
+        message: 'SOS Emergency triggered by child'
+      });
+
+      setTimeout(() => setSosTriggered(false), 5000);
+    } catch (error) {
+      console.error('Failed to trigger SOS:', error);
+      alert('Failed to trigger emergency. Please try again.');
+      setSosTriggered(false);
+    }
   };
 
-  const shareLocation = () => {
+  const shareLocation = async () => {
     if (!navigator.geolocation) {
       alert('Geolocation not supported');
       return;
     }
+    
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         const { latitude, longitude } = pos.coords;
-        const mapUrl = `https://maps.google.com/maps?q=${latitude},${longitude}`;
-        window.open(`sms:+1234567890?body=${encodeURIComponent(`📍 My location: ${mapUrl}`)}`, '_blank');
+        
+        try {
+          // Update location in backend
+          await locationAPI.updateLocation({ 
+            latitude, 
+            longitude, 
+            accuracy: pos.coords.accuracy 
+          });
+          
+          // Get active parents to share location with
+          const parentsResponse = await relationshipAPI.getActiveRelationships();
+          if (parentsResponse.success && parentsResponse.data.activeRelationships.length > 0) {
+            // Send location to all active parents
+            const mapUrl = `https://maps.google.com/maps?q=${latitude},${longitude}`;
+            const locationMessage = `📍 My current location: ${mapUrl}`;
+            
+            // Send location message to each parent
+            for (const relationship of parentsResponse.data.activeRelationships) {
+              if (relationship.permissions.locationTracking) {
+                await communicationAPI.sendMessage({
+                  receiverId: relationship.parentId._id,
+                  content: locationMessage,
+                  messageType: 'location',
+                  latitude,
+                  longitude,
+                  address: 'Current Location'
+                });
+              }
+            }
+            
+            alert('Location shared with your parents!');
+          } else {
+            alert('No active parents found. Please add a parent first.');
+          }
+        } catch (error) {
+          console.error('Failed to share location:', error);
+          alert('Failed to share location. Please try again.');
+        }
       },
       () => alert('Please allow location access')
     );
   };
 
+  const stopSharing = async () => {
+    try {
+      await locationAPI.stopSharing();
+      setIsSharing(false); // ✅ mark sharing OFF
+      alert('Location sharing stopped');
+    } catch (error) {
+      console.error(error);
+      alert('Failed to stop sharing');
+    }
+  };
+
   const callParent = () => {
-    window.open('tel:+1234567890', '_self');
+    // Get active parent to call
+    const callParentFunc = async () => {
+      try {
+        const parentsResponse = await relationshipAPI.getActiveRelationships();
+        if (parentsResponse.success && parentsResponse.data.activeRelationships.length > 0) {
+          const firstParent = parentsResponse.data.activeRelationships[0];
+          if (firstParent.parentId?.phone) {
+            window.open(`tel:${firstParent.parentId.phone}`, '_self');
+          } else {
+            alert('Parent phone number not available.');
+          }
+        } else {
+          alert('No active parents found. Please add a parent first.');
+        }
+      } catch (error) {
+        console.error('Failed to get parents:', error);
+        alert('Failed to retrieve parent information.');
+      }
+    };
+    
+    callParentFunc();
   };
 
   return (
@@ -84,17 +204,19 @@ const ChildDashboard = () => {
           {/* Action Buttons */}
           <div className="grid grid-cols-3 gap-4">
             <motion.button
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
-              onClick={shareLocation}
-              className="flex flex-col items-center gap-2 p-4 bg-card rounded-2xl shadow-depth hover:shadow-depth-hover transition-all active:scale-95"
-            >
-              <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                <MapPin className="w-5 h-5 text-primary" />
-              </div>
-              <span className="text-xs font-medium text-foreground">Share Location</span>
-            </motion.button>
+  onClick={isSharing ? stopSharing : shareLocation}
+  className={`flex flex-col items-center gap-2 p-4 rounded-2xl shadow-depth transition-all active:scale-95
+    ${isSharing ? 'bg-red-100' : 'bg-card hover:shadow-depth-hover'}
+  `}
+>
+  <div className="w-10 h-10 rounded-full flex items-center justify-center">
+    <MapPin className={`w-5 h-5 ${isSharing ? 'text-red-500' : 'text-primary'}`} />
+  </div>
+
+  <span className="text-xs font-medium text-foreground">
+    {isSharing ? 'Stop Sharing' : 'Share Location'}
+  </span>
+</motion.button>
 
             <motion.button
               initial={{ opacity: 0, y: 20 }}

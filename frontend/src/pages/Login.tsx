@@ -48,15 +48,19 @@ const Login = () => {
       return;
     }
 
-    // ✅ Save token
+    // Save token
     localStorage.setItem("token", data.data.token);
 
-    // ✅ Save user info
-    setRole(selectedRole);
+    // Save user data to localStorage
+    localStorage.setItem("user", JSON.stringify(data.data.user));
+
+    // Save user info to context using actual userType from backend
+    const actualRole = data.data.user.userType.toLowerCase();
+    setRole(actualRole as 'parent' | 'child' | 'adult' | 'member' | 'individual');
     setUserName(data.data.user.name);
 
-    // ✅ Redirect
-    navigate(`/dashboard/${selectedRole}`);
+    // Redirect using actual role
+    navigate(`/dashboard/${actualRole}`);
 
   } catch (error) {
     console.error(error);

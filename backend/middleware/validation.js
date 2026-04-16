@@ -118,6 +118,39 @@ const validateMessage = [
     .withMessage('Invalid priority level')
 ];
 
+const validateRelationshipRequest = [
+  body('targetUserId')
+    .notEmpty()
+    .withMessage('Target user ID is required'),
+  body('relationshipType')
+    .isIn(['parent-child', 'guardian-ward', 'guardian-adult'])
+    .withMessage('Invalid relationship type'),
+  body('requestMessage')
+    .optional()
+    .isLength({ max: 500 })
+    .withMessage('Request message must be less than 500 characters'),
+  body('permissions')
+    .optional()
+    .isObject()
+    .withMessage('Permissions must be an object'),
+  body('permissions.locationTracking')
+    .optional()
+    .isBoolean()
+    .withMessage('Location tracking permission must be boolean'),
+  body('permissions.emergencyAlerts')
+    .optional()
+    .isBoolean()
+    .withMessage('Emergency alerts permission must be boolean'),
+  body('permissions.communication')
+    .optional()
+    .isBoolean()
+    .withMessage('Communication permission must be boolean'),
+  body('permissions.manageSettings')
+    .optional()
+    .isBoolean()
+    .withMessage('Manage settings permission must be boolean'),
+];
+
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   
@@ -142,5 +175,6 @@ export {
   validateLocation,
   validateEmergency,
   validateMessage,
+  validateRelationshipRequest,
   handleValidationErrors
 };

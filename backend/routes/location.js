@@ -28,13 +28,17 @@ router.post('/update',
       // Update address if provided
       if (address) {
         user.currentLocation.address = address;
+        user.locationSharingExpiresAt = new Date(Date.now() + 15 * 60 * 1000)
         await user.save();
       }
 
       const io = req.app.get('io');
 
       // If user is in emergency, broadcast location to emergency contacts
-      if (user.status === 'Emergency') {
+      if (
+  user.status === 'Emergency' ||
+  user.emergencySettings?.shareWithEmergencyContacts
+) {
         const activeEmergencies = await Emergency.find({
           individualId: req.user.id,
           status: 'Active'
@@ -75,7 +79,6 @@ router.post('/update',
 router.get('/:userId/current', auth, async (req, res) => {
   try {
     const { userId } = req.params;
-
     // Check if requesting user is an emergency contact of target user
     const targetUser = await User.findById(userId);
     
@@ -96,15 +99,19 @@ router.get('/:userId/current', auth, async (req, res) => {
         message: 'Access denied. You are not an emergency contact of this user.'
       });
     }
-
+    const now = new Date();
+const canShare =
+  (targetUser.status === 'Emergency' && targetUser.emergencySettings?.shareDuringEmergency) ||
+  targetUser.emergencySettings?.shareWithEmergencyContacts ||
+  (targetUser.locationSharingExpiresAt &&
+   targetUser.locationSharingExpiresAt > now);
     // Only provide location if user is in emergency status
-    if (targetUser.status !== 'Emergency' && userId !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'Location is only available during emergencies'
-      });
-    }
-
+   if (!canShare && userId !== req.user.id) {
+  return res.status(403).json({
+    success: false,
+    message: 'Location sharing is disabled'
+  });
+}
     res.json({
       success: true,
       data: {
@@ -405,5 +412,24 @@ router.put('/sharing-preferences', auth, async (req, res) => {
     });
   }
 });
+// Start temporary location sharing (15 minutes)
+router.post('/share-temporary', auth, async (req, res) => {
+  const user = await User.findById(req.user.id);
 
+  user.locationSharingExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+  await user.save();
+
+  res.json({ success: true });
+});
+// Stop temporary sharing
+router.post('/stop-sharing', auth, async (req, res) => {
+  const user = await User.findById(req.user.id);
+
+  user.locationSharingExpiresAt = null;
+  user.emergencySettings.shareWithEmergencyContacts = false;
+
+  await user.save();
+
+  res.json({ success: true });
+});
 export default router;

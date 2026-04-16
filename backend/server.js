@@ -11,6 +11,7 @@ import userRoutes from './routes/users.js';
 import emergencyRoutes from './routes/emergency.js';
 import locationRoutes from './routes/location.js';
 import communicationRoutes from './routes/communication.js';
+import relationshipRoutes from './routes/relationships.js';
 import evidenceRoutes from './routes/evidenceRoutes.js';
 dotenv.config();
 
@@ -76,6 +77,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/emergency', emergencyRoutes);
 app.use('/api/location', locationRoutes);
 app.use('/api/communication', communicationRoutes);
+app.use('/api/relationships', relationshipRoutes);
 app.use('/api/evidence', evidenceRoutes);
 // Health check
 app.get('/api/health', (req, res) => {

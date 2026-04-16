@@ -1,6 +1,8 @@
 import nodemailer from "nodemailer";
 import dotenv from "dotenv";
+import User from '../models/User.js';
 dotenv.config();
+
 class NotificationService {
   constructor() {
     this.emailTransporter = null;
@@ -71,6 +73,60 @@ class NotificationService {
       return false;
     }
   }
+
+  async sendRelationshipNotification({ userId, type, message, data }) {
+    try {
+      const user = await User.findById(userId);
+      if (!user) return;
+
+      const notification = {
+        type: 'relationship',
+        subtype: type,
+        message,
+        data,
+        timestamp: new Date()
+      };
+
+      // Send email notification
+      if (user.email && user.preferences?.emailNotifications) {
+        const html = `
+          <!DOCTYPE html>
+          <html>
+          <body style="font-family: sans-serif; padding: 20px; background:#f9fafb;">
+            <div style="max-width:560px;margin:auto;background:#fff;border-radius:8px;padding:20px;">
+              <h2>Relationship ${type.replace('_', ' ').toUpperCase()}</h2>
+              <p>${message}</p>
+              <p style="margin-top:20px;">
+                <a href="${process.env.CLIENT_URL || 'http://localhost:5173'}/dashboard" 
+                   style="display:inline-block;padding:10px 16px;background:#059669;color:#fff;border-radius:6px;text-decoration:none;">
+                  View in BeSafe
+                </a>
+              </p>
+            </div>
+          </body>
+          </html>
+        `;
+
+        const mailOptions = {
+          from: `"Be-Safe Support" <${process.env.EMAIL_USER}>`,
+          to: user.email,
+          subject: `BeSafe - ${type.replace('_', ' ').toUpperCase()}`,
+          html,
+        };
+
+        if (this.emailTransporter) {
+          await this.emailTransporter.sendMail(mailOptions);
+        }
+      }
+
+      // Store notification in database (you might want to create a Notification model)
+      console.log('Relationship notification:', notification);
+
+    } catch (error) {
+      console.error('Error sending relationship notification:', error);
+    }
+  }
 }
 
+export { NotificationService };
 export default new NotificationService();

@@ -190,8 +190,6 @@ router.put('/:emergencyId/status', auth, authorize('Member', 'Individual'), asyn
     });
   }
 });
-
-
 // Get active emergencies for a member
 router.get('/active', auth, authorize('Member'), async (req, res) => {
   try {
@@ -215,7 +213,6 @@ router.get('/active', auth, authorize('Member'), async (req, res) => {
     });
   }
 });
-
 // Respond to emergency (Help/Ignore)
 router.post('/:emergencyId/respond', auth, authorize('Member'), async (req, res) => {
   try {
@@ -316,7 +313,6 @@ router.post('/:emergencyId/respond', auth, authorize('Member'), async (req, res)
     });
   }
 });
-
 // Get emergency details
 router.get('/:emergencyId', auth, async (req, res) => {
   try {
@@ -361,7 +357,6 @@ router.get('/:emergencyId', auth, async (req, res) => {
     });
   }
 });
-
 // Resolve emergency
 router.post('/:emergencyId/resolve', auth, async (req, res) => {
   try {
@@ -433,8 +428,6 @@ router.post('/:emergencyId/resolve', auth, async (req, res) => {
     });
   }
 });
-
-
 // Method to record member response edit
 router.put('/:emergencyId/edit', auth, async (req, res) => {
   try {
@@ -506,7 +499,6 @@ router.put('/:emergencyId', auth, authorize('Individual'), upload.fields([
     res.status(500).json({ success: false });
   }
 });
-
 // Get user's emergency history
 router.get('/history/:userId', auth, async (req, res) => {
   try {

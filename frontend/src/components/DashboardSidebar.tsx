@@ -1,9 +1,9 @@
 import { Link, useLocation } from 'react-router-dom';
-import { ShieldCheck, LayoutDashboard, FolderLock, FileWarning, FileText, Users, Settings, X, Menu } from 'lucide-react';
+import { ShieldCheck, LayoutDashboard, FolderLock, FileWarning, FileText, Users, Settings, X, Menu, UserPlus, Users2 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
-const sidebarItems = [
+const baseSidebarItems = [
   { title: 'Dashboard', icon: LayoutDashboard, url: '' },          // will expand to `/dashboard/[role]`
   { title: 'Evidence Locker', icon: FolderLock, url: '/evidence-locker' },
   // { title: 'Threat Logs', icon: FileWarning, url: '/thread-logs' },
@@ -12,11 +12,36 @@ const sidebarItems = [
   { title: 'Settings', icon: Settings, url: '/settings' },
 ];
 
+const parentSidebarItems = [
+  ...baseSidebarItems,
+  { title: 'Child Info', icon: Users2, url: '/child-info' },
+];
+
+const childAdultSidebarItems = [
+  ...baseSidebarItems,
+  { title: 'Parent Info', icon: UserPlus, url: '/parent-info' },
+];
+
 export const DashboardSidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { role, userName, logout } = useAuth();
   const location = useLocation();
+
+  // Get role-specific sidebar items
+  const getSidebarItems = () => {
+    switch (role) {
+      case 'parent':
+        return parentSidebarItems;
+      case 'child':
+      case 'adult':
+        return childAdultSidebarItems;
+      default:
+        return baseSidebarItems;
+    }
+  };
+
+  const sidebarItems = getSidebarItems();
 
   const getUrl = (item: typeof sidebarItems[0]) => {
     if (item.title === "Dashboard") {

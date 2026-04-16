@@ -133,8 +133,21 @@ export default function SettingsPage() {
     }
   };
   if (loading || !profile) {
-  return <div className="p-4"></div>;
-};
+  return (
+    <div className="flex min-h-screen bg-secondary/30">
+      <DashboardSidebar />
+
+      <main className="flex-1 p-6 lg:p-8 flex items-center justify-center">
+        <div className="text-center space-y-2">
+          <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full mx-auto" />
+          <p className="text-sm text-muted-foreground">Loading settings...</p>
+        </div>
+      </main>
+
+      <BottomNav />
+    </div>
+  );
+}
 
 
   return (

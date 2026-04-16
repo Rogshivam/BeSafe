@@ -1,62 +1,146 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Phone, MessageSquare, Plus, X, UserPlus, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { usersAPI, communicationAPI, EmergencyContact } from '@/services/api';
 
 interface Contact {
   id: string;
+  memberId: string;
   name: string;
   phone: string;
   relation: string;
+  priority: 'High' | 'Medium' | 'Low';
+  isEmergencyContact: boolean;
 }
-
-const defaultContacts: Contact[] = [
-  { id: '1', name: 'Mom', phone: '+1234567890', relation: 'Mother' },
-  { id: '2', name: 'Dad', phone: '+1234567891', relation: 'Father' },
-  { id: '3', name: 'Police', phone: '911', relation: 'Emergency' },
-];
 
 export const EmergencyContacts = () => {
   const { role } = useAuth();
-  const [contacts, setContacts] = useState<Contact[]>(defaultContacts);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [newContact, setNewContact] = useState({ name: '', phone: '', relation: '' });
+  const [newContact, setNewContact] = useState({ name: '', phone: '', relation: '', priority: 'Medium' as 'High' | 'Medium' | 'Low' });
   const [bulkMsg, setBulkMsg] = useState('');
   const [showBulkMsg, setShowBulkMsg] = useState(false);
   const [sentAlert, setSentAlert] = useState(false);
 
-  const addContact = () => {
+  // Fetch emergency contacts from backend
+  useEffect(() => {
+    const fetchContacts = async () => {
+      try {
+        const response = await usersAPI.getEmergencyContacts();
+        if (response.success) {
+          // Transform backend contacts to include phone number
+          const transformedContacts = response.data.emergencyContacts.map((contact: any) => ({
+            id: contact.id,
+            memberId: contact.memberId._id || contact.memberId,
+            name: contact.memberName || contact.memberId?.name || '',
+            phone: contact.memberId?.phone || '',
+            relation: contact.relation,
+            priority: contact.priority,
+            isEmergencyContact: contact.isEmergencyContact,
+          }));
+          setContacts(transformedContacts);
+        }
+      } catch (error) {
+        console.error('Failed to fetch emergency contacts:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchContacts();
+  }, []);
+
+  const addContact = async () => {
     if (!newContact.name || !newContact.phone) return;
-    setContacts(prev => [...prev, { ...newContact, id: Date.now().toString() }]);
-    setNewContact({ name: '', phone: '', relation: '' });
+    
+    try {
+      // First search for the user by phone/email
+      const searchResponse = await usersAPI.searchUsers(newContact.phone);
+      if (searchResponse.success && searchResponse.data.users.length > 0) {
+        const user = searchResponse.data.users[0];
+        
+        // Add as emergency contact
+        const addResponse = await usersAPI.addEmergencyContact({
+          memberId: user.id,
+          relation: newContact.relation,
+          priority: newContact.priority
+        });
+        
+        if (addResponse.success) {
+          // Refresh contacts
+          const contactsResponse = await usersAPI.getEmergencyContacts();
+          if (contactsResponse.success) {
+            const transformedContacts = contactsResponse.data.emergencyContacts.map((contact: any) => ({
+              id: contact.id,
+              memberId: contact.memberId._id || contact.memberId,
+              name: contact.memberName || contact.memberId?.name || '',
+              phone: contact.memberId?.phone || '',
+              relation: contact.relation,
+              priority: contact.priority,
+              isEmergencyContact: contact.isEmergencyContact,
+            }));
+            setContacts(transformedContacts);
+          }
+        } else {
+          alert('User not found. Please check the phone number or email and try again.');
+        }
+      } else {
+        alert('User not found. Please check the phone number or email and try again.');
+      }
+    } catch (error) {
+      console.error('Failed to add contact:', error);
+      alert('Failed to add contact. Please check phone number and try again.');
+    }
+    
+    setNewContact({ name: '', phone: '', relation: '', priority: 'Medium' });
     setShowAdd(false);
   };
 
-  const removeContact = (id: string) => {
-    setContacts(prev => prev.filter(c => c.id !== id));
+  const removeContact = async (memberId: string) => {
+    try {
+      // Find the contact ID to remove
+      const contact = contacts.find(c => c.memberId === memberId);
+      if (contact) {
+        const response = await usersAPI.removeEmergencyContact(contact.id);
+        if (response.success) {
+          setContacts(prev => prev.filter(c => c.memberId !== memberId));
+        }
+      }
+    } catch (error) {
+      console.error('Failed to remove contact:', error);
+      alert('Failed to remove contact. Please try again.');
+    }
   };
 
   const callContact = (phone: string) => {
     window.open(`tel:${phone}`, '_self');
   };
 
-  const sendBulkDangerMsg = () => {
-    const message = bulkMsg || '🚨 I AM IN DANGER! Please help me immediately!';
-    contacts.forEach(contact => {
-      window.open(`sms:${contact.phone}?body=${encodeURIComponent(message)}`, '_blank');
-    });
-    setSentAlert(true);
-    setTimeout(() => setSentAlert(false), 3000);
-    setShowBulkMsg(false);
-    setBulkMsg('');
+  const sendBulkDangerMsg = async () => {
+    try {
+      const message = bulkMsg || '🚨 I AM IN DANGER! Please help me immediately!';
+      await communicationAPI.triggerAlarm(message);
+      setSentAlert(true);
+      setTimeout(() => setSentAlert(false), 3000);
+      setShowBulkMsg(false);
+      setBulkMsg('');
+    } catch (error) {
+      console.error('Failed to send bulk message:', error);
+      alert('Failed to send emergency alert. Please try again.');
+    }
   };
 
-  const sendQuickDanger = () => {
-    const message = '🚨 EMERGENCY: I AM IN DANGER! Please help me immediately! Send help now!';
-    contacts.forEach(contact => {
-      window.open(`sms:${contact.phone}?body=${encodeURIComponent(message)}`, '_blank');
-    });
-    setSentAlert(true);
-    setTimeout(() => setSentAlert(false), 3000);
+  const sendQuickDanger = async () => {
+    try {
+      const message = '🚨 EMERGENCY: I AM IN DANGER! Please help me immediately! Send help now!';
+      await communicationAPI.triggerAlarm(message);
+      setSentAlert(true);
+      setTimeout(() => setSentAlert(false), 3000);
+    } catch (error) {
+      console.error('Failed to send quick danger alert:', error);
+      alert('Failed to send emergency alert. Please try again.');
+    }
   };
 
   return (
@@ -122,10 +206,34 @@ export const EmergencyContacts = () => {
               <X className="w-4 h-4" />
             </button>
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            <input value={newContact.name} onChange={e => setNewContact(p => ({...p, name: e.target.value}))} placeholder="Name" className="px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
-            <input value={newContact.phone} onChange={e => setNewContact(p => ({...p, phone: e.target.value}))} placeholder="Phone" className="px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
-            <input value={newContact.relation} onChange={e => setNewContact(p => ({...p, relation: e.target.value}))} placeholder="Relation" className="px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" />
+          <div className="grid grid-cols-4 gap-2">
+            <input 
+              value={newContact.name} 
+              onChange={e => setNewContact(p => ({...p, name: e.target.value}))} 
+              placeholder="Name" 
+              className="px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" 
+            />
+            <input 
+              value={newContact.phone} 
+              onChange={e => setNewContact(p => ({...p, phone: e.target.value}))} 
+              placeholder="Phone or Email" 
+              className="px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" 
+            />
+            <input 
+              value={newContact.relation} 
+              onChange={e => setNewContact(p => ({...p, relation: e.target.value}))} 
+              placeholder="Relation" 
+              className="px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" 
+            />
+            <select 
+              value={newContact.priority} 
+              onChange={e => setNewContact(p => ({...p, priority: e.target.value as 'High' | 'Medium' | 'Low'}))} 
+              className="px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+            </select>
           </div>
           <button onClick={addContact} className="w-full py-2 gradient-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 active:scale-95">
             Add Contact
@@ -135,14 +243,14 @@ export const EmergencyContacts = () => {
 
       <div className="divide-y divide-border">
         {contacts.map(contact => (
-          <div key={contact.id} className="p-4 flex items-center justify-between hover:bg-secondary/50 transition-colors group">
+          <div key={contact.memberId} className="p-4 flex items-center justify-between hover:bg-secondary/50 transition-colors group">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center text-primary-foreground font-bold text-sm">
-                {contact.name[0]}
+                {contact.name?.[0] || '?'}
               </div>
               <div>
                 <p className="text-sm font-medium text-foreground">{contact.name}</p>
-                <p className="text-xs text-muted-foreground">{contact.relation} • {contact.phone}</p>
+                <p className="text-xs text-muted-foreground">{contact.relation} • {contact.phone} • {contact.priority}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -161,7 +269,7 @@ export const EmergencyContacts = () => {
                 <MessageSquare className="w-4 h-4" />
               </button>
               <button
-                onClick={() => removeContact(contact.id)}
+                onClick={() => removeContact(contact.memberId)}
                 className="w-9 h-9 rounded-full bg-destructive/10 text-destructive flex items-center justify-center hover:bg-destructive/20 transition-colors opacity-0 group-hover:opacity-100"
                 title="Remove"
               >
