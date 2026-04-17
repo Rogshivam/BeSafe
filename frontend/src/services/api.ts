@@ -386,15 +386,15 @@ export const evidenceAPI = {
 
 // Location API
 export const locationAPI = {
-  updateLocation: async (locationData: {
-    latitude: number;
-    longitude: number;
-    accuracy?: number;
-    address?: string;
-  }) => {
-    const response = await api.post('/location/update', locationData);
-    return response.data;
-  },
+  // updateLocation: async (locationData: {
+  //   latitude: number;
+  //   longitude: number;
+  //   accuracy?: number;
+  //   address?: string;
+  // }) => {
+  //   const response = await api.post('/location/update', locationData);
+  //   return response.data;
+  // },
 
   // getCurrentLocation: async (userId: string): Promise<{ success: boolean; data: { location: Location; status: string; lastActive: string } }> => {
   //   const response = await api.get(`/location/${userId}/current`);
@@ -417,6 +417,18 @@ getCurrentLocation: async (userId: string) => {
       radius: (radius || 1000).toString(),
     });
     const response = await api.get(`/location/nearby?${params}`);
+    return response.data;
+  },
+
+  updateLocation: async (locationData: {
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+    address?: string;
+    status?: string;
+    timestamp?: string;
+  }) => {
+    const response = await api.post('/location/update', locationData);
     return response.data;
   },
 

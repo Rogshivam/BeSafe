@@ -1,6 +1,7 @@
 import express from 'express';
 import User from '../models/User.js';
 import Emergency from '../models/Emergency.js';
+import Relationship from '../models/Relationship.js';
 import { auth } from '../middleware/auth.js';
 import { validateLocation, handleValidationErrors } from '../middleware/validation.js';
 import { getDistance } from 'geolib';
@@ -13,6 +14,10 @@ router.post('/update',
   validateLocation, 
   handleValidationErrors, 
   async (req, res) => {
+    // Disable caching for location updates
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
     try {
       const { latitude, longitude, accuracy, address } = req.body;
       
@@ -25,10 +30,20 @@ router.post('/update',
         accuracy ? parseFloat(accuracy) : 0
       );
 
-      // Update address if provided
+      // Update address and store last location
       if (address) {
         user.currentLocation.address = address;
         user.locationSharingExpiresAt = new Date(Date.now() + 15 * 60 * 1000)
+        
+        // Store last location for parents to see
+        user.lastKnownLocation = {
+          latitude: parseFloat(latitude),
+          longitude: parseFloat(longitude),
+          address: address,
+          accuracy: accuracy ? parseFloat(accuracy) : 0,
+          timestamp: new Date()
+        };
+        
         await user.save();
       }
 
@@ -54,6 +69,52 @@ router.post('/update',
               timestamp: new Date()
             });
           }
+        }
+      }
+
+      // Also broadcast to related parents for regular location sharing
+      const activeRelationships = await Relationship.find({
+        $or: [
+          { childId: req.user.id, status: 'active' },
+          { parentId: req.user.id, status: 'active' }
+        ]
+      }).populate('parentId childId', 'name');
+
+      for (const relationship of activeRelationships) {
+        // If current user is the child, store location in relationship and broadcast to parent
+        if (relationship.childId._id.toString() === req.user.id.toString()) {
+          // Store child's current location in the relationship
+          relationship.childLocation = {
+            latitude: parseFloat(latitude),
+            longitude: parseFloat(longitude),
+            address: address || 'Unknown location',
+            accuracy: accuracy ? parseFloat(accuracy) : 0,
+            timestamp: new Date()
+          };
+
+          // Store last known location if location sharing stopped
+          if (user.lastKnownLocation) {
+            relationship.childLocation.lastKnownLocation = user.lastKnownLocation;
+          }
+
+          await relationship.save();
+
+          // Broadcast to parent
+          io.to(relationship.parentId._id.toString()).emit('location-update', {
+            userId: req.user.id,
+            userName: user.name,
+            location: user.currentLocation,
+            timestamp: new Date()
+          });
+        }
+        // If current user is the parent, broadcast to child (for two-way communication)
+        else if (relationship.parentId._id.toString() === req.user.id.toString()) {
+          io.to(relationship.childId._id.toString()).emit('location-update', {
+            userId: req.user.id,
+            userName: user.name,
+            location: user.currentLocation,
+            timestamp: new Date()
+          });
         }
       }
 

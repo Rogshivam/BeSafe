@@ -43,7 +43,7 @@ const upload = multer({
 router.post(
   '/trigger',
   auth,
-  authorize('Individual'),
+  authorize(['Individual', 'Child']),
   upload.fields([
     { name: 'image', maxCount: 1 },
     { name: 'audio', maxCount: 1 }
@@ -191,8 +191,22 @@ router.put('/:emergencyId/status', auth, authorize('Member', 'Individual'), asyn
   }
 });
 // Get active emergencies for a member
-router.get('/active', auth, authorize('Member'), async (req, res) => {
+router.get('/active', auth, (req, res, next) => {
+  const userRole = req.user.userType?.toLowerCase();
+  if (userRole !== 'member' && userRole !== 'parent') {
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied. Only members and parents can access active emergencies.'
+    });
+  }
+  next();
+}, async (req, res) => {
   try {
+    // Debug logging
+    console.log('Debug - Emergency endpoint - User ID:', req.user.id);
+    console.log('Debug - Emergency endpoint - User Role:', req.user.userType);
+    console.log('Debug - Emergency endpoint - User Role (lowercase):', req.user.userType?.toLowerCase());
+
     const emergencies = await Emergency.find({
       status: 'Active',
       'notifiedMembers.memberId': req.user.id

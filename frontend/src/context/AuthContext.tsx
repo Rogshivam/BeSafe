@@ -39,33 +39,36 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const savedRole = localStorage.getItem("role") as Role;
       const savedUserName = localStorage.getItem("userName") || "";
 
-      if (token && savedUser && savedRole && savedUserName) {
-        try {
-          // Validate token with backend
-          const response = await authAPI.getCurrentUser();
-          if (response.success) {
-            // Token is valid, restore auth state with actual user data
-            const userData = JSON.parse(savedUser);
-            const actualRole = userData.userType.toLowerCase() as Role;
-            setRoleState(actualRole);
-            setUserNameState(userData.name);
-            
-            // Update stored role if it was wrong
-            if (actualRole !== savedRole) {
-              localStorage.setItem("role", actualRole);
-              localStorage.setItem("userName", userData.name);
+      // If we have stored user data, restore it immediately
+      if (savedUser && savedRole && savedUserName) {
+        const userData = JSON.parse(savedUser);
+        const actualRole = userData.userType.toLowerCase() as Role;
+        setRoleState(actualRole);
+        setUserNameState(userData.name);
+        
+        // Then try to validate token in background
+        if (token) {
+          try {
+            const response = await authAPI.getCurrentUser();
+            if (response.success) {
+              // Token is valid, update stored role if needed
+              if (actualRole !== savedRole) {
+                localStorage.setItem("role", actualRole);
+                localStorage.setItem("userName", userData.name);
+              }
+            } else {
+              // Token is invalid, but keep user session for better UX
+              console.warn('Token validation failed, keeping user session');
+              localStorage.removeItem("token");
             }
-          } else {
-            // Token is invalid, clear auth state
-            logout();
+          } catch (error) {
+            // Token validation failed, but keep user session for better UX
+            console.warn('Token validation error:', error);
+            localStorage.removeItem("token");
           }
-        } catch (error) {
-          // Token validation failed, clear auth state
-          console.error('Token validation failed:', error);
-          logout();
         }
       } else {
-        // No token found, ensure logged out state
+        // No stored user data, ensure logged out state
         logout();
       }
       setIsLoading(false);

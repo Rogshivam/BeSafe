@@ -417,16 +417,23 @@ router.get('/child-locations', auth, async (req, res) => {
     const relationships = await Relationship.find({
       parentId: userId,
       status: 'active'
-    }).populate('childId', 'name email currentLocation');
+    }).populate('childId', 'name email currentLocation lastKnownLocation status');
 
     const childLocations = relationships.map(rel => ({
       id: rel.childId._id,
       name: rel.childId.name,
-      latitude: rel.childId.currentLocation?.latitude || null,
-      longitude: rel.childId.currentLocation?.longitude || null,
-      address: rel.childId.currentLocation?.address || null,
-      lastUpdate: rel.childId.lastActive || rel.updatedAt,
-      status: 'safe' // Could be enhanced with actual safety status
+      // Use relationship-stored location first, then fallback to user's current location
+      latitude: rel.childLocation?.latitude || rel.childId.currentLocation?.latitude || rel.childId.lastKnownLocation?.latitude || null,
+      longitude: rel.childLocation?.longitude || rel.childId.currentLocation?.longitude || rel.childId.lastKnownLocation?.longitude || null,
+      address: rel.childLocation?.address || rel.childId.currentLocation?.address || rel.childId.lastKnownLocation?.address || null,
+      lastUpdate: rel.childLocation?.timestamp || rel.childId.lastKnownLocation?.timestamp || rel.childId.lastActive || rel.updatedAt,
+      lastKnownLocation: rel.childLocation?.lastKnownLocation || rel.childId.lastKnownLocation ? {
+        latitude: rel.childLocation?.lastKnownLocation?.latitude || rel.childId.lastKnownLocation.latitude,
+        longitude: rel.childLocation?.lastKnownLocation?.longitude || rel.childId.lastKnownLocation.longitude,
+        address: rel.childLocation?.lastKnownLocation?.address || rel.childId.lastKnownLocation.address,
+        timestamp: rel.childLocation?.lastKnownLocation?.timestamp || rel.childId.lastKnownLocation.timestamp
+      } : null,
+      status: rel.childId.status || 'safe'
     }));
 
     res.json({
@@ -442,6 +449,46 @@ router.get('/child-locations', auth, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch child locations'
+    });
+  }
+});
+
+// Debug endpoint to check current user and relationships
+router.get('/debug', auth, async (req, res) => {
+  try {
+    console.log('Debug - Current User:', {
+      id: req.user.id,
+      name: req.user.name,
+      userType: req.user.userType,
+      email: req.user.email
+    });
+
+    const allRelationships = await Relationship.find({
+      $or: [
+        { parentId: req.user.id },
+        { childId: req.user.id }
+      ]
+    }).populate('parentId childId', 'name email userType');
+
+    console.log('Debug - All Relationships for User:', JSON.stringify(allRelationships, null, 2));
+
+    res.json({
+      success: true,
+      data: {
+        currentUser: {
+          id: req.user.id,
+          name: req.user.name,
+          userType: req.user.userType,
+          email: req.user.email
+        },
+        relationships: allRelationships
+      }
+    });
+  } catch (error) {
+    console.error('Debug endpoint error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Debug endpoint failed'
     });
   }
 });

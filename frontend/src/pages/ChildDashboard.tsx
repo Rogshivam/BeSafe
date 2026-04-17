@@ -1,18 +1,20 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { DashboardSidebar } from '@/components/DashboardSidebar';
+import { LiveMap } from '@/components/LiveMap';
 import { ChatbotWidget } from '@/components/ChatbotWidget';
 import { EmergencyContacts } from '@/components/EmergencyContacts';
 import { SettingsPanel } from '@/components/SettingsPanel';
-import { MapPin, Phone, ShieldCheck, AlertTriangle } from 'lucide-react';
-import { emergencyAPI, locationAPI, relationshipAPI, communicationAPI, getCurrentUser } from '@/services/api';
+import { Phone, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { emergencyAPI, relationshipAPI, locationAPI, getCurrentUser } from '@/services/api';
 import socketService from '@/services/socket';
 
 const ChildDashboard = () => {
   const [sosTriggered, setSosTriggered] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-const [isSharing, setIsSharing] = useState(false);
+  const [isSharingLocation, setIsSharingLocation] = useState(false);
+
   useEffect(() => {
     // Get current user and connect to socket
     const user = getCurrentUser();
@@ -21,29 +23,16 @@ const [isSharing, setIsSharing] = useState(false);
       socketService.connect(user.id);
     }
 
-    let watchId: number;
-
-  if (navigator.geolocation) {
-    watchId = navigator.geolocation.watchPosition((pos) => {
-      const { latitude, longitude } = pos.coords;
-
-      setLocation({ latitude, longitude });
-
-      if (isSharing) { // ✅ only send when sharing
-        locationAPI.updateLocation({
-          latitude,
-          longitude,
-          accuracy: pos.coords.accuracy
+    // Get current location for SOS
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition((pos) => {
+        setLocation({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude
         });
-      }
-    });
-  }
-
-  return () => {
-    if (watchId) navigator.geolocation.clearWatch(watchId);
-  };
-    
-  }, [isSharing]);
+      });
+    }
+  }, []);
 
   const triggerSOS = async () => {
     if (!currentUser || !location) {
@@ -71,67 +60,53 @@ const [isSharing, setIsSharing] = useState(false);
     }
   };
 
-  const shareLocation = async () => {
+  const startLocationSharing = async () => {
     if (!navigator.geolocation) {
       alert('Geolocation not supported');
       return;
     }
     
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        
-        try {
-          // Update location in backend
-          await locationAPI.updateLocation({ 
-            latitude, 
-            longitude, 
-            accuracy: pos.coords.accuracy 
-          });
-          
-          // Get active parents to share location with
-          const parentsResponse = await relationshipAPI.getActiveRelationships();
-          if (parentsResponse.success && parentsResponse.data.activeRelationships.length > 0) {
-            // Send location to all active parents
-            const mapUrl = `https://maps.google.com/maps?q=${latitude},${longitude}`;
-            const locationMessage = `📍 My current location: ${mapUrl}`;
-            
-            // Send location message to each parent
-            for (const relationship of parentsResponse.data.activeRelationships) {
-              if (relationship.permissions.locationTracking) {
-                await communicationAPI.sendMessage({
-                  receiverId: relationship.parentId._id,
-                  content: locationMessage,
-                  messageType: 'location',
-                  latitude,
-                  longitude,
-                  address: 'Current Location'
-                });
-              }
-            }
-            
-            alert('Location shared with your parents!');
-          } else {
-            alert('No active parents found. Please add a parent first.');
-          }
-        } catch (error) {
-          console.error('Failed to share location:', error);
-          alert('Failed to share location. Please try again.');
-        }
-      },
-      () => alert('Please allow location access')
-    );
+    try {
+      setIsSharingLocation(true);
+      
+      // Get current position
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        });
+      });
+
+      const locationData = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+        address: 'Current Location',
+        status: 'safe',
+        timestamp: new Date().toISOString()
+      };
+
+      // Update local state
+      setLocation({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude
+      });
+
+      // Send to backend
+      await locationAPI.updateLocation(locationData);
+      
+      alert('Location sharing started! Your location will be updated every 15 minutes.');
+    } catch (error) {
+      console.error('Failed to start location sharing:', error);
+      alert('Failed to start location sharing. Please try again.');
+      setIsSharingLocation(false);
+    }
   };
 
-  const stopSharing = async () => {
-    try {
-      await locationAPI.stopSharing();
-      setIsSharing(false); // ✅ mark sharing OFF
-      alert('Location sharing stopped');
-    } catch (error) {
-      console.error(error);
-      alert('Failed to stop sharing');
-    }
+  const stopLocationSharing = () => {
+    setIsSharingLocation(false);
+    alert('Location sharing stopped.');
   };
 
   const callParent = () => {
@@ -201,22 +176,36 @@ const [isSharing, setIsSharing] = useState(false);
             </button>
           </motion.div>
 
-          {/* Action Buttons */}
-          <div className="grid grid-cols-3 gap-4">
-            <motion.button
-  onClick={isSharing ? stopSharing : shareLocation}
-  className={`flex flex-col items-center gap-2 p-4 rounded-2xl shadow-depth transition-all active:scale-95
-    ${isSharing ? 'bg-red-100' : 'bg-card hover:shadow-depth-hover'}
-  `}
->
-  <div className="w-10 h-10 rounded-full flex items-center justify-center">
-    <MapPin className={`w-5 h-5 ${isSharing ? 'text-red-500' : 'text-primary'}`} />
-  </div>
+          {/* LiveMap with Location Sharing */}
+          <div className="w-full">
+            <LiveMap
+              latitude={location?.latitude || 28.6139}
+              longitude={location?.longitude || 77.2090}
+              address="Current Location"
+              accuracy={10}
+              status="Active"
+              isParent={false}
+            />
+          </div>
 
-  <span className="text-xs font-medium text-foreground">
-    {isSharing ? 'Stop Sharing' : 'Share Location'}
-  </span>
-</motion.button>
+          {/* Action Buttons */}
+          <div className="grid grid-cols-3 gap-4 mt-6">
+            <motion.button
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              onClick={isSharingLocation ? stopLocationSharing : startLocationSharing}
+              className={`flex flex-col items-center gap-2 p-4 rounded-2xl shadow-depth transition-all active:scale-95
+                ${isSharingLocation ? 'bg-red-100' : 'bg-card hover:shadow-depth-hover'}
+              `}
+            >
+              <div className="w-10 h-10 rounded-full flex items-center justify-center">
+                <div className={`w-5 h-5 rounded-full ${isSharingLocation ? 'bg-red-500' : 'bg-green-500'}`} />
+              </div>
+              <span className="text-xs font-medium text-foreground">
+                {isSharingLocation ? 'Stop Sharing' : 'Share Location'}
+              </span>
+            </motion.button>
 
             <motion.button
               initial={{ opacity: 0, y: 20 }}

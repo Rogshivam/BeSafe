@@ -54,6 +54,20 @@ const relationshipSchema = new mongoose.Schema({
       enum: ['realtime', '5min', '15min', '30min', '1hour'], 
       default: '5min' 
     }
+  },
+  childLocation: {
+    latitude: { type: Number },
+    longitude: { type: Number },
+    address: { type: String },
+    accuracy: { type: Number },
+    timestamp: { type: Date, default: Date.now },
+    lastKnownLocation: {
+      latitude: { type: Number },
+      longitude: { type: Number },
+      address: { type: String },
+      accuracy: { type: Number },
+      timestamp: { type: Date }
+    }
   }
 }, {
   timestamps: true

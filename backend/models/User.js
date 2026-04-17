@@ -86,6 +86,13 @@ const userSchema = new mongoose.Schema({
   locationHistory: [{
     type: locationSchema
   }],
+  lastKnownLocation: {
+    latitude: Number,
+    longitude: Number,
+    address: String,
+    accuracy: Number,
+    timestamp: Date
+  },
   emergencyContacts: [emergencyContactSchema],
   profileImage: {
     type: String,

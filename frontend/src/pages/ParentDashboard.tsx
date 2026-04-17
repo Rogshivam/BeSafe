@@ -9,7 +9,7 @@ import { ChatbotWidget } from '@/components/ChatbotWidget';
 import { EmergencyContacts } from '@/components/EmergencyContacts';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { Phone } from 'lucide-react';
-import { emergencyAPI, locationAPI, getCurrentUser } from '@/services/api';
+import { emergencyAPI, locationAPI, getCurrentUser, relationshipAPI } from '@/services/api';
 import socketService from '@/services/socket';
 
 interface SafeZone {
@@ -27,6 +27,7 @@ interface Alert {
 const ParentDashboard = () => {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [childLocation, setChildLocation] = useState<any>(null);
+  const [childLocations, setChildLocations] = useState<any[]>([]);
   const [activeEmergencies, setActiveEmergencies] = useState<any[]>([]);
   const [safeZones, setSafeZones] = useState<SafeZone[]>([
     { name: 'Home', status: 'Safe', color: 'bg-safe' },
@@ -34,7 +35,6 @@ const ParentDashboard = () => {
     { name: 'Park', status: 'Boundary', color: 'bg-warning' },
   ]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
-const CHILD_ID = localStorage.getItem('childId');
   useEffect(() => {
     // Get current user and connect to socket
     const user = getCurrentUser();
@@ -43,7 +43,7 @@ const CHILD_ID = localStorage.getItem('childId');
       socketService.connect(user.id);
     }
 
-    // Fetch active emergencies
+    // Fetch active emergencies and child locations
     const fetchData = async () => {
       try {
         const emergenciesResponse = await emergencyAPI.getActiveEmergencies();
@@ -60,21 +60,24 @@ const CHILD_ID = localStorage.getItem('childId');
           setAlerts(emergencyAlerts);
         }
 
-        // Get child's location (this would typically come from a specific child ID)
-        // For demo purposes, we'll use a mock location
-        // setChildLocation({
-        //   latitude: 40.7128,
-        //   longitude: -74.0060,
-        //   address: 'New York, NY'
-        // });
-        // Replace with actual child ID (store it in parent profile ideally)
-const CHILD_ID = localStorage.getItem('childId'); // or from backend
-if (CHILD_ID) {
-  const locationRes = await locationAPI.getCurrentLocation(CHILD_ID);
-  if (locationRes.success) {
-    setChildLocation(locationRes.data.location);
-  }
-}
+        // Get child locations from relationships
+        const childLocationsRes = await relationshipAPI.getChildLocations();
+        if (childLocationsRes.success) {
+          const childrenWithColors = (childLocationsRes.data.childLocations || []).map((child: any, index: number) => ({
+            ...child,
+            color: [
+              '#10b981', // green
+              '#3b82f6', // blue  
+              '#f59e0b', // yellow
+              '#ef4444', // red
+              '#8b5cf6', // purple
+              '#ec4899', // pink
+              '#14b8a6', // teal
+              '#f97316', // orange
+            ][index % 8]
+          }));
+          setChildLocations(childrenWithColors);
+        }
 
       } catch (error) {
         console.error('Failed to fetch data:', error);
@@ -96,31 +99,30 @@ if (CHILD_ID) {
 
     // Listen for location updates
     socketService.onLocationUpdate((data) => {
-      
-  setChildLocation(data.location); // ✅ FIXED
+      if (data.location) {
+        // Update child locations list
+        setChildLocations(prev => 
+          prev.map(child => 
+            child.id === data.userId 
+              ? { ...child, ...data.location, lastUpdate: new Date().toISOString() }
+              : child
+          )
+        );
 
-  // Update safe zones based on location
-  updateSafeZones(data.location);
-});
-      
-     
+        // Update main child location if it matches the first child
+        if (childLocations.length > 0 && childLocations[0].id === data.userId) {
+          setChildLocation(data.location);
+        }
+
+        // Update safe zones based on location
+        updateSafeZones(data.location);
+      }
+    });
 
     return () => {
       socketService.removeAllListeners();
     };
   }, []);
-useEffect(() => {
-  if (!CHILD_ID) return;
-
-  const interval = setInterval(async () => {
-    const res = await locationAPI.getCurrentLocation(CHILD_ID);
-    if (res.success) {
-      setChildLocation(res.data.location);
-    }
-  }, 5000);
-
-  return () => clearInterval(interval);
-}, [CHILD_ID]);
 
   const updateSafeZones = (location: any) => {
     // This would normally check if child is within predefined safe zones
@@ -177,15 +179,44 @@ useEffect(() => {
               status={activeEmergencies.length > 0 ? 'Emergency' : 'Active'} 
             /> */}
             <LiveMap
-  latitude={childLocation?.latitude}
-  longitude={childLocation?.longitude}
+  latitude={childLocation?.latitude || 40.7128}
+  longitude={childLocation?.longitude || -74.0060}
   address={childLocation?.address}
   accuracy={childLocation?.accuracy}
   status={activeEmergencies.length > 0 ? 'Emergency' : 'Active'}
+  isParent={true}
+  childLocations={childLocations}
 />
           </div>
 
           <div className="space-y-6">
+            {/* Last Seen Section */}
+            <div className="bg-card rounded-2xl shadow-depth p-4">
+              <h3 className="font-bold text-foreground mb-3 flex items-center gap-2">
+                <span>👁️</span> Last Seen
+              </h3>
+              <div className="space-y-2">
+                {childLocations && childLocations.length > 0 ? (
+                  childLocations.map((child) => (
+                    <div key={child.id} className="flex items-center justify-between p-2 bg-background rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-3 h-3 rounded-full ${
+                          child.status === 'safe' ? 'bg-green-500' : 
+                          child.status === 'warning' ? 'bg-yellow-500' : 'bg-red-500'
+                        }`} />
+                        <span className="text-sm font-medium">{child.name}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(child.lastUpdate).toLocaleString()}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-muted-foreground">No child locations available</div>
+                )}
+              </div>
+            </div>
+
             {/* Safe Zones */}
             <div className="bg-card rounded-2xl shadow-depth p-4">
               <h3 className="font-bold text-foreground mb-3 flex items-center gap-2">
