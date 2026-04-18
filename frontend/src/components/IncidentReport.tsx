@@ -13,6 +13,8 @@ interface Incident {
   title: string;
   description: string;
   location?: string;
+  latitude?: number;
+  longitude?: number;
   timestamp: string;
   status: 'Open' | 'Resolved';
   mediaType?: 'image' | 'video';
@@ -40,26 +42,63 @@ export default function IncidentReport() {
   const fetchIncidents = async () => {
     try {
       const res = await emergencyAPI.getEmergencyHistory();
+      const position = await new Promise<GeolocationPosition>((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject)
+      );
 
-      const mapped = res.data.emergencies.map((e: any) => ({
-        id: e._id || e.id,
-        title: e.title || e.message || "Untitled Incident",
-        description: e.description || e.message || "No description",
-        location: e.location?.address,
-        timestamp: e.createdAt,
+      const { latitude, longitude } = position.coords;
+      // const mapped = res.data.emergencies.map((e: any) => ({
+      //   id: e._id || e.id,
+      //   title: e.title || e.message || "Untitled Incident",
+      //   description: e.description || e.message || "No description",
+      //   location: e.location?.address || 
+      //     (e.location?.latitude && e.location?.longitude 
+      //       ? `${e.location.latitude.toFixed(6)}, ${e.location.longitude.toFixed(6)}`
+      //       : 'Unknown Location'),
+      //   timestamp: e.createdAt,
 
-        status: (e.status === 'Resolved'
-          ? 'Resolved'
-          : 'Open') as 'Open' | 'Resolved',
+      //   status: (e.status === 'Resolved'
+      //     ? 'Resolved'
+      //     : 'Open') as 'Open' | 'Resolved',
 
-        mediaType: e.image
-          ? ('image' as const)
-          : e.audioRecording
-            ? ('video' as const)
-            : undefined,
+      //   mediaType: e.image
+      //     ? ('image' as const)
+      //     : e.audioRecording
+      //       ? ('video' as const)
+      //       : undefined,
 
-        mediaName: e.image || e.audioRecording
-      }));
+      //   mediaName: e.image || e.audioRecording
+      // }));
+      const mapped = res.data.emergencies.map((e: any) => {
+        const lat = e.location?.latitude || e.latitude;
+        const lng = e.location?.longitude || e.longitude;
+        const address = e.location?.address || e.address;
+
+        let locationText = 'Unknown Location';
+
+        if (address && address !== 'Unknown Location') {
+          locationText = address;
+        } else if (lat && lng) {
+          locationText = `${parseFloat(lat).toFixed(6)}, ${parseFloat(lng).toFixed(6)}`;
+        }
+
+        return {
+          id: e._id || e.id,
+          title: e.title || e.message || "Untitled Incident",
+          description: e.description || e.message || "No description",
+          location: locationText,
+          latitude: lat ? parseFloat(lat) : undefined,
+          longitude: lng ? parseFloat(lng) : undefined,
+          timestamp: e.createdAt,
+          status: (e.status === 'Resolved' ? 'Resolved' : 'Open') as 'Open' | 'Resolved',
+          mediaType: e.image
+            ? ('image' as const)
+            : e.audioRecording
+              ? ('video' as const)
+              : undefined,
+          mediaName: e.image || e.audioRecording
+        };
+      });
       setIncidents(mapped);
     } catch (err) {
       console.error(err);
@@ -69,6 +108,7 @@ export default function IncidentReport() {
   useEffect(() => {
     fetchIncidents();
   }, []);
+
 
   // ✅ Submit → trigger emergency API
   const handleSubmit = async () => {
@@ -82,9 +122,9 @@ export default function IncidentReport() {
           triggeredBy: 'Manual',
           latitude: 28.6139,
           longitude: 77.2090,
-          title: form.title,          // ✅ ADD THIS
-          description: form.description, // ✅ ADD THIS
-          message: form.description,  // optional (can keep)
+          title: form.title,
+          description: form.description,
+          message: form.description,
           address: form.location,
           severity: 'Medium'
         },
@@ -160,14 +200,14 @@ export default function IncidentReport() {
   const toggleStatus = async (incident: Incident) => {
     try {
       const newStatus =
-        incident.status === 'Open' ? 'Resolved' : 'Active';
+        incident.status === 'Open' ? 'Resolved' : 'Open';
 
       await emergencyAPI.updateEmergencyStatus(incident.id, newStatus);
 
       setIncidents(prev =>
         prev.map(i =>
           i.id === incident.id
-            ? { ...i, status: newStatus === 'Resolved' ? 'Resolved' : 'Open' }
+            ? { ...i, status: newStatus }
             : i
         )
       );
@@ -250,10 +290,22 @@ export default function IncidentReport() {
                 </span>
 
                 {inc.location && (
-                  <span className="flex gap-1">
+                  <a
+                    href={
+                      inc.latitude && inc.longitude
+                        ? `https://www.google.com/maps?q=${inc.latitude},${inc.longitude}`
+                        : undefined
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex gap-1 hover:underline text-blue-500"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <MapPin className="w-3 h-3" />
-                    {inc.location}
-                  </span>
+                    {inc.location === 'Unknown Location'
+                      ? 'View on map'
+                      : inc.location}
+                  </a>
                 )}
 
               </div>

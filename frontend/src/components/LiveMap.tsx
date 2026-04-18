@@ -5,7 +5,7 @@ import { MapPin, Share2, StopCircle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import socketService from '@/services/socket';
 import { locationAPI, getCurrentUser } from '@/services/api';
-
+import React from 'react';
 interface Props {
   latitude: number;
   longitude: number;
@@ -161,6 +161,11 @@ export const LiveMap = ({ latitude, longitude, address, accuracy, status, isPare
       }
     };
   }, [locationUpdateInterval]);
+  useEffect(() => {
+  setTimeout(() => {
+    window.dispatchEvent(new Event('resize'));
+  }, 100);
+}, []);
 
   if (!latitude || !longitude) {
     return (
@@ -169,9 +174,9 @@ export const LiveMap = ({ latitude, longitude, address, accuracy, status, isPare
       </div>
     );
   }
-
+console.log(latitude, longitude);
   return (
-    <div className="rounded-2xl overflow-hidden shadow-depth">
+   <div className="rounded-2xl overflow-hidden shadow-depth" style={{ height: '500px' }}>
       {/* Location Sharing Control - Only for non-parents */}
       {!isParent && (
         <div className="mb-4 p-3 bg-gray-50 rounded-lg">
@@ -241,16 +246,49 @@ export const LiveMap = ({ latitude, longitude, address, accuracy, status, isPare
       )}
 
       <MapContainer
-        center={[latitude, longitude]}
-        zoom={16}
-        style={{ height: '400px', width: '100%' }}
-      >
-        <TileLayer
-          attribution='&copy; OpenStreetMap'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+  center={[28.6139, 77.2090]}
+  zoom={13}
+  style={{ height: '400px', width: '100%' }}
+>
+  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-        {/* Main user marker */}
+
+      {/* Parent location marker - always show for parent view */}
+      {isParent && (
+        <Marker 
+          position={[latitude, longitude]}
+          icon={L.divIcon({
+            className: 'custom-div-icon',
+            html: `<div class="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 border-4 border-white shadow-lg">
+                <span class="text-white text-sm font-bold">P</span>
+              </div>`,
+            iconSize: [32, 32],
+            iconAnchor: [16, 16]
+          })}
+        >
+          <TileLayer
+    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+  />
+          <Popup>
+            <div>
+              <strong>Parent (You)</strong>
+              <br />
+              {address || 'Your Location'}
+              {accuracy && (
+                <div className="text-xs text-gray-600">
+                  Accuracy: &plusmn;{accuracy}m
+                </div>
+              )}
+              <div className="text-xs text-blue-600 font-semibold mt-1">
+                This is your current location
+              </div>
+            </div>
+          </Popup>
+        </Marker>
+      )}
+
+      {/* Main user marker - show for non-parents */}
+      {!isParent && (
         <Marker position={[latitude, longitude]}>
           <Popup>
             <div>
@@ -265,17 +303,47 @@ export const LiveMap = ({ latitude, longitude, address, accuracy, status, isPare
             </div>
           </Popup>
         </Marker>
+      )}
 
-        {/* Child location markers for parent view */}
-        {isParent && childLocations && childLocations.map((child, index) => (
-          <>
-            {/* Current location marker */}
+      {/* Child location markers for parent view */}
+      {isParent && childLocations && childLocations.map((child, index) => (
+        <React.Fragment key={child.id}>
+          <Marker
+            key={`current-${child.id}`}
+            position={[child.latitude, child.longitude]}
+            icon={L.divIcon({
+              className: 'custom-div-icon',
+              html: `<div class="flex items-center justify-center w-6 h-6 rounded-full" style="background-color: ${getChildColor(child, index)}">
+                <span class="text-white text-xs font-bold">${child.name.charAt(0).toUpperCase()}</span>
+              </div>`,
+              iconSize: [24, 24],
+              iconAnchor: [12, 12]
+            })}
+          >
+            <Popup>
+              <div>
+                <strong>{child.name} - Current</strong>
+                <br />
+                Status: <span className={`font-semibold ${
+                  child.status === 'safe' ? 'text-green-600' : 
+                  child.status === 'warning' ? 'text-yellow-600' : 'text-red-600'
+                }`}>{child.status}</span>
+                <br />
+                Last Update: {new Date(child.lastUpdate).toLocaleString()}
+                <br />
+                {child.address && `Location: ${child.address}`}
+              </div>
+            </Popup>
+          </Marker>
+
+          {/* Last known location marker */}
+          {child.lastKnownLocation && (
             <Marker
-              key={`current-${child.id}`}
-              position={[child.latitude, child.longitude]}
+              key={`last-${child.id}`}
+              position={[child.lastKnownLocation.latitude, child.lastKnownLocation.longitude]}
               icon={L.divIcon({
                 className: 'custom-div-icon',
-                html: `<div class="flex items-center justify-center w-6 h-6 rounded-full" style="background-color: ${getChildColor(child, index)}">
+                html: `<div class="flex items-center justify-center w-6 h-6 rounded-full bg-gray-400 border-2 border-white">
                   <span class="text-white text-xs font-bold">${child.name.charAt(0).toUpperCase()}</span>
                 </div>`,
                 iconSize: [24, 24],
@@ -284,60 +352,30 @@ export const LiveMap = ({ latitude, longitude, address, accuracy, status, isPare
             >
               <Popup>
                 <div>
-                  <strong>{child.name} - Current</strong>
+                  <strong>{child.name} - Last Known</strong>
                   <br />
-                  Status: <span className={`font-semibold ${
-                    child.status === 'safe' ? 'text-green-600' : 
-                    child.status === 'warning' ? 'text-yellow-600' : 'text-red-600'
-                  }`}>{child.status}</span>
+                  <span className="text-gray-600 font-semibold">Previous Location</span>
                   <br />
-                  Last Update: {new Date(child.lastUpdate).toLocaleString()}
+                  Time: {new Date(child.lastKnownLocation.timestamp).toLocaleString()}
                   <br />
-                  {child.address && `Location: ${child.address}`}
+                  {child.lastKnownLocation.address && `Location: ${child.lastKnownLocation.address}`}
                 </div>
               </Popup>
             </Marker>
+          )}
+        </React.Fragment>
+      ))}
 
-            {/* Last known location marker */}
-            {child.lastKnownLocation && (
-              <Marker
-                key={`last-${child.id}`}
-                position={[child.lastKnownLocation.latitude, child.lastKnownLocation.longitude]}
-                icon={L.divIcon({
-                  className: 'custom-div-icon',
-                  html: `<div class="flex items-center justify-center w-6 h-6 rounded-full bg-gray-400 border-2 border-white">
-                    <span class="text-white text-xs font-bold">${child.name.charAt(0).toUpperCase()}</span>
-                  </div>`,
-                  iconSize: [24, 24],
-                  iconAnchor: [12, 12]
-                })}
-              >
-                <Popup>
-                  <div>
-                    <strong>{child.name} - Last Known</strong>
-                    <br />
-                    <span className="text-gray-600 font-semibold">Previous Location</span>
-                    <br />
-                    Time: {new Date(child.lastKnownLocation.timestamp).toLocaleString()}
-                    <br />
-                    {child.lastKnownLocation.address && `Location: ${child.lastKnownLocation.address}`}
-                  </div>
-                </Popup>
-              </Marker>
-            )}
-          </>
-        ))}
-
-        {/* Accuracy radius */}
-        {accuracy && (
-          <Circle
-            center={[latitude, longitude]}
-            radius={accuracy}
-            fillColor={status === 'safe' ? '#10b981' : status === 'warning' ? '#f59e0b' : '#ef4444'}
-            fillOpacity={0.2}
-            color={status === 'safe' ? '#059669' : status === 'warning' ? '#d97706' : '#dc2626'}
-          />
-        )}
+      {/* Accuracy radius */}
+      {accuracy && (
+        <Circle
+          center={[latitude, longitude]}
+          radius={accuracy}
+          fillColor={status === 'safe' ? '#10b981' : status === 'warning' ? '#f59e0b' : '#ef4444'}
+          fillOpacity={0.2}
+          color={status === 'safe' ? '#059669' : status === 'warning' ? '#d97706' : '#dc2626'}
+        />
+      )}
       </MapContainer>
 
       {/* Child selection legend for parent view */}
@@ -361,9 +399,14 @@ export const LiveMap = ({ latitude, longitude, address, accuracy, status, isPare
               <div className="w-3 h-3 bg-gray-400 rounded-full border border-white" />
               <span>Last Known Location</span>
             </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-blue-600 rounded-full" />
+              <span>Parent Location</span>
+            </div>
           </div>
         </div>
       )}
+      
     </div>
   );
 };

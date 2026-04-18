@@ -271,10 +271,12 @@ export const emergencyAPI = {
     longitude: number;
     severity?: string;
     message?: string;
-    title?: string;        // ✅ ADD THIS
-    description?: string;  // ✅ ADD THIS
+    title?: string;
+    description?: string;
     address?: string;
     accuracy?: number;
+    notifyViaEmail?: boolean; // ADD THIS
+    emailRecipients?: string[]; // ADD THIS
   }, files?: { image?: File; audio?: File }) => {
     const formData = new FormData();
     Object.entries(emergencyData).forEach(([key, value]) => {
@@ -310,6 +312,38 @@ export const emergencyAPI = {
 
   getEmergencyDetails: async (emergencyId: string): Promise<{ success: boolean; data: { emergency: Emergency } }> => {
     const response = await api.get(`/emergency/${emergencyId}`);
+    return response.data;
+  },
+
+  // Universal SOS notification - works for all user types
+  sendEmergencyNotification: async (notificationData: {
+    childName?: string;
+    childLocation: {
+      latitude: number;
+      longitude: number;
+      address?: string;
+      accuracy?: number;
+    };
+    message?: string;
+    severity?: string;
+  }) => {
+    const response = await api.post('/emergency/notify-parents', notificationData);
+    return response.data;
+  },
+
+  // Legacy email notification (kept for compatibility)
+  sendEmergencyEmail: async (emailData: {
+    childName?: string;
+    childLocation: {
+      latitude: number;
+      longitude: number;
+      address?: string;
+      accuracy?: number;
+    };
+    message?: string;
+    severity?: string;
+  }) => {
+    const response = await api.post('/emergency/notify-parents', emailData);
     return response.data;
   },
 
@@ -460,11 +494,27 @@ getCurrentLocation: async (userId: string) => {
 stopSharing: async () => {
   const res = await api.post('/location/stop-sharing');
   return res.data;
-}
+},
 };
 
 // Relationship API
 export const relationshipAPI = {
+  // Direct SOS notification via relationships API (working alternative)
+  sendSOSNotification: async (notificationData: {
+    childName?: string;
+    childLocation: {
+      latitude: number;
+      longitude: number;
+      address?: string;
+      accuracy?: number;
+    };
+    message?: string;
+    severity?: string;
+  }) => {
+    const response = await api.post('/relationships/send-sos-notification', notificationData);
+    return response.data;
+  },
+
   sendRelationshipRequest: async (data: { targetUserId: string; relationshipType: string; requestMessage?: string; permissions?: any }) => {
     const response = await api.post('/relationships/request', data);
     return response.data;

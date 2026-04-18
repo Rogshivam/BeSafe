@@ -67,6 +67,11 @@ const App = () => (
             {/* adult only */}
             <Route element={<RequireRole allowedRoles={["adult"]} />}>
               <Route path="/dashboard/adult" element={<AdultDashboard />} />
+
+            </Route>
+            <Route element={<RequireRole allowedRoles={["individual"]} />}>
+              <Route path="/dashboard/individual" element={<AdultDashboard />} />
+              
             </Route>
 
             {/* child only */}

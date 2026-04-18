@@ -7,7 +7,8 @@ import User from '../models/User.js';
 import Message from '../models/Message.js';
 import { auth, authorize } from '../middleware/auth.js';
 import { validateEmergency, handleValidationErrors } from '../middleware/validation.js';
-
+import notificationService from '../services/notificationService.js';
+import Relationship from '../models/Relationship.js';
 const router = express.Router();
 
 // Configure multer for file uploads
@@ -43,7 +44,7 @@ const upload = multer({
 router.post(
   '/trigger',
   auth,
-  authorize(['Individual', 'Child']),
+  authorize('Individual', 'Child', 'Member', 'Parent'),
   upload.fields([
     { name: 'image', maxCount: 1 },
     { name: 'audio', maxCount: 1 }
@@ -52,15 +53,22 @@ router.post(
   handleValidationErrors,
   async (req, res) => {
     try {
+      console.log('Emergency trigger request body:', req.body);
+      console.log('Emergency trigger files:', req.files);
+
       const {
-  triggeredBy,
-  latitude,
-  longitude,
-  severity,
-  message,
-  title,
-  description
-} = req.body;
+        triggeredBy,
+        latitude,
+        longitude,
+        severity,
+        message,
+        title,
+        description
+      } = req.body;
+
+      // Convert string coordinates to numbers for FormData submissions
+      const latitudeNum = parseFloat(latitude);
+      const longitudeNum = parseFloat(longitude);
 
       const io = req.app.get('io');
 
@@ -75,18 +83,18 @@ router.post(
       }
 
       const emergency = new Emergency({
-  individualId: req.user.id,
-  triggeredBy,
-  location: {
-    latitude: parseFloat(latitude),
-    longitude: parseFloat(longitude),
-    address: req.body.address || '',
-  },
-  severity: severity || 'Medium',
+        individualId: req.user.id,
+        triggeredBy,
+        location: {
+          latitude: latitudeNum,
+          longitude: longitudeNum,
+          address: req.body.address || '',
+        },
+        severity: severity || 'Medium',
 
-  title: title || 'Emergency',
-  description: description || message || '',
-  message: message || description || '',
+        title: title || 'Emergency',
+        description: description || message || '',
+        message: message || description || '',
         image: req.files?.image?.[0]
           ? `/uploads/emergency/${req.files.image[0].filename}`
           : '',
@@ -132,6 +140,30 @@ router.post(
         });
       }
 
+      // Send SOS email to parent with location sharing links
+      if (emergency.location && user.userType === 'Child') {
+        // Find parent relationships
+        // const Relationship = require('../models/Relationship.js');
+
+        const parentRelationships = await Relationship.find({
+          childId: req.user.id,
+          status: 'active'
+        }).populate('parentId', 'email name');
+
+        // Send email to each parent
+        for (const relationship of parentRelationships) {
+          if (relationship.parentId && relationship.parentId.email) {
+            await notificationService.sendSOSEmergencyNotification({
+              childId: req.user.id,
+              childName: user.name,
+              childLocation: emergency.location,
+              parentEmail: relationship.parentId.email,
+              severity: emergency.severity
+            });
+          }
+        }
+      }
+
       res.status(201).json({
         success: true,
         message: 'Emergency triggered successfully',
@@ -152,7 +184,7 @@ router.post(
   }
 );
 //updating emergency status
-router.put('/:emergencyId/status', auth, authorize('Member', 'Individual'), async (req, res) => {
+router.put('/:emergencyId/status', auth, authorize('Member', 'Individual','Child','Parent'), async (req, res) => {
   try {
     const { emergencyId } = req.params;
     const { status } = req.body;
@@ -190,6 +222,152 @@ router.put('/:emergencyId/status', auth, authorize('Member', 'Individual'), asyn
     });
   }
 });
+// Universal SOS notification - works for all user types
+router.post('/notify-parents', auth, async (req, res) => {
+  try {
+    const { childName, childLocation, message, severity } = req.body;
+    const userId = req.user.id;
+
+    console.log('SOS Notification request:', {
+      userId,
+      userType: req.user.userType,
+      childName,
+      hasLocation: !!childLocation
+    });
+
+    // Find parent relationships - works for any user type
+    const { default: Relationship } = await import('../models/Relationship.js');
+    let parentRelationships = [];
+
+    // Try to find relationships where current user is the child
+    parentRelationships = await Relationship.find({
+      childId: userId,
+      status: 'active'
+    }).populate('parentId', 'email name');
+
+    // If no relationships found as child, try as parent (for testing)
+    if (parentRelationships.length === 0) {
+      parentRelationships = await Relationship.find({
+        parentId: userId,
+        status: 'active'
+      }).populate('childId', 'name');
+
+      // Reverse the relationship for email sending
+      parentRelationships = parentRelationships.map(rel => ({
+        parentId: rel.childId,
+        childId: rel.parentId
+      }));
+    }
+
+    if (parentRelationships.length === 0) {
+      console.log('No parent relationships found for user:', userId);
+      return res.status(404).json({
+        success: false,
+        message: 'No active parent relationships found. Please add a parent relationship first.'
+      });
+    }
+
+    console.log(`Found ${parentRelationships.length} parent relationships`);
+
+    // Send email to each parent
+    let emailSent = false;
+    for (const relationship of parentRelationships) {
+      if (relationship.parentId && relationship.parentId.email) {
+        console.log('Sending email to parent:', relationship.parentId.email);
+        const success = await notificationService.sendSOSEmergencyNotification({
+          childId: userId,
+          childName: childName || req.user.name || 'Child',
+          childLocation: childLocation,
+          parentEmail: relationship.parentId.email,
+          severity: severity || 'Emergency'
+        });
+        if (success) {
+          emailSent = true;
+          console.log('Email sent successfully to:', relationship.parentId.email);
+        } else {
+          console.log('Failed to send email to:', relationship.parentId.email);
+        }
+      }
+    }
+
+    if (emailSent) {
+      res.json({
+        success: true,
+        message: `Emergency notification sent successfully to ${parentRelationships.length} parent(s)`
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: 'Failed to send emergency email notifications'
+      });
+    }
+
+  } catch (error) {
+    console.error('Universal SOS notification error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error sending emergency notification'
+    });
+  }
+});
+
+// Direct email notification for SOS fallback
+router.post('/send-email', auth, async (req, res) => {
+  try {
+    const { childName, childLocation, message, severity } = req.body;
+    const userId = req.user.id;
+
+    // Find parent relationships
+    const Relationship = require('../models/Relationship.js');
+    // const { default: Relationship } = await import('../models/Relationship.js');
+    const parentRelationships = await Relationship.find({
+      childId: userId,
+      status: 'active'
+    }).populate('parentId', 'email name');
+
+    if (parentRelationships.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No active parent relationships found'
+      });
+    }
+
+    // Send email to each parent
+    let emailSent = false;
+    for (const relationship of parentRelationships) {
+      if (relationship.parentId && relationship.parentId.email) {
+        const success = await notificationService.sendSOSEmergencyNotification(
+          userId,
+          childName || req.user.name,
+          childLocation,
+          relationship.parentId.email,
+          severity || 'Emergency'
+        );
+        if (success) emailSent = true;
+      }
+    }
+
+    if (emailSent) {
+      res.json({
+        success: true,
+        message: 'Emergency email sent successfully to parents'
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: 'Failed to send emergency email'
+      });
+    }
+
+  } catch (error) {
+    console.error('Direct email notification error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error sending emergency email'
+    });
+  }
+});
+
 // Get active emergencies for a member
 router.get('/active', auth, (req, res, next) => {
   const userRole = req.user.userType?.toLowerCase();
@@ -202,18 +380,13 @@ router.get('/active', auth, (req, res, next) => {
   next();
 }, async (req, res) => {
   try {
-    // Debug logging
-    console.log('Debug - Emergency endpoint - User ID:', req.user.id);
-    console.log('Debug - Emergency endpoint - User Role:', req.user.userType);
-    console.log('Debug - Emergency endpoint - User Role (lowercase):', req.user.userType?.toLowerCase());
-
     const emergencies = await Emergency.find({
       status: 'Active',
       'notifiedMembers.memberId': req.user.id
     })
-    .populate('individualId', 'name phone email profileImage')
-    .populate('notifiedMembers.memberId', 'name phone email')
-    .sort({ createdAt: -1 });
+      .populate('individualId', 'name phone email profileImage')
+      .populate('notifiedMembers.memberId', 'name phone email')
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,
@@ -228,7 +401,7 @@ router.get('/active', auth, (req, res, next) => {
   }
 });
 // Respond to emergency (Help/Ignore)
-router.post('/:emergencyId/respond', auth, authorize('Member'), async (req, res) => {
+router.post('/:emergencyId/respond', auth, authorize('Individual', 'Child', 'Member', 'Parent'), async (req, res) => {
   try {
     const { emergencyId } = req.params;
     const { response } = req.body; // 'Help' or 'Ignore'
@@ -274,7 +447,7 @@ router.post('/:emergencyId/respond', auth, authorize('Member'), async (req, res)
     );
 
     const io = req.app.get('io');
-    
+
     // Notify individual about the response
     io.to(emergency.individualId._id.toString()).emit('emergency-response', {
       emergencyId: emergency._id,
@@ -292,7 +465,7 @@ router.post('/:emergencyId/respond', auth, authorize('Member'), async (req, res)
       receiverId: emergency.individualId._id,
       emergencyId: emergency._id,
       messageType: 'System',
-      content: response === 'Help' 
+      content: response === 'Help'
         ? `✅ ${emergency.notifiedMembers.find(n => n.memberId._id.toString() === req.user.id).memberId.name} is coming to help you!`
         : `❌ ${emergency.notifiedMembers.find(n => n.memberId._id.toString() === req.user.id).memberId.name} is unable to respond.`,
       priority: 'High'
@@ -346,7 +519,7 @@ router.get('/:emergencyId', auth, async (req, res) => {
     }
 
     // Check if user has access to this emergency
-    const hasAccess = 
+    const hasAccess =
       emergency.individualId._id.toString() === req.user.id ||
       emergency.notifiedMembers.some(
         notification => notification.memberId._id.toString() === req.user.id
@@ -387,7 +560,7 @@ router.post('/:emergencyId/resolve', auth, async (req, res) => {
     }
 
     // Check if user can resolve this emergency
-    const canResolve = 
+    const canResolve =
       emergency.individualId.toString() === req.user.id ||
       emergency.responders.some(
         responder => responder.memberId.toString() === req.user.id
@@ -451,7 +624,7 @@ router.put('/:emergencyId/edit', auth, async (req, res) => {
     if (!emergency) {
       return res.status(404).json({ message: 'Not found' });
     }
-emergency.title = `${title}`;
+    emergency.title = `${title}`;
     emergency.message = `${description}`;
     emergency.location.address = address;
 
@@ -467,7 +640,7 @@ emergency.title = `${title}`;
   }
 });
 //edit emergency details (title, description, location) - only by individual who triggered it
-router.put('/:emergencyId', auth, authorize('Individual'), upload.fields([
+router.put('/:emergencyId', auth, authorize('Individual', 'Child', 'Member', 'Parent'), upload.fields([
   { name: 'image', maxCount: 1 },
   { name: 'audio', maxCount: 1 }
 ]), async (req, res) => {

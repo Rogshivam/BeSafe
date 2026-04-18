@@ -26,6 +26,7 @@ interface Alert {
 
 const ParentDashboard = () => {
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [parentLocation, setParentLocation] = useState<any>(null);
   const [childLocation, setChildLocation] = useState<any>(null);
   const [childLocations, setChildLocations] = useState<any[]>([]);
   const [activeEmergencies, setActiveEmergencies] = useState<any[]>([]);
@@ -59,6 +60,41 @@ const ParentDashboard = () => {
           
           setAlerts(emergencyAlerts);
         }
+
+        // Get parent's current location
+        const getParentLocation = async () => {
+          try {
+            const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+              navigator.geolocation.getCurrentPosition(resolve, reject, {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+              });
+            });
+
+            const locationData = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+              address: 'Parent Location',
+              status: 'safe'
+            };
+
+            setParentLocation(locationData);
+          } catch (error) {
+            console.warn('Could not get parent location:', error);
+            // Set default location (New Delhi)
+            setParentLocation({
+              latitude: 28.6139,
+              longitude: 77.2090,
+              accuracy: 100,
+              address: 'Default Location',
+              status: 'safe'
+            });
+          }
+        };
+
+        await getParentLocation();
 
         // Get child locations from relationships
         const childLocationsRes = await relationshipAPI.getChildLocations();
@@ -179,10 +215,10 @@ const ParentDashboard = () => {
               status={activeEmergencies.length > 0 ? 'Emergency' : 'Active'} 
             /> */}
             <LiveMap
-  latitude={childLocation?.latitude || 40.7128}
-  longitude={childLocation?.longitude || -74.0060}
-  address={childLocation?.address}
-  accuracy={childLocation?.accuracy}
+  latitude={parentLocation?.latitude || 28.6139}
+  longitude={parentLocation?.longitude || 77.2090}
+  address={parentLocation?.address}
+  accuracy={parentLocation?.accuracy}
   status={activeEmergencies.length > 0 ? 'Emergency' : 'Active'}
   isParent={true}
   childLocations={childLocations}

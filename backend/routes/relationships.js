@@ -453,42 +453,77 @@ router.get('/child-locations', auth, async (req, res) => {
   }
 });
 
-// Debug endpoint to check current user and relationships
-router.get('/debug', auth, async (req, res) => {
+// Direct SOS notification for children to notify parents
+router.post('/send-sos-notification', auth, async (req, res) => {
   try {
-    console.log('Debug - Current User:', {
-      id: req.user.id,
-      name: req.user.name,
+    console.log('SOS Notification - Full request body:', req.body);
+    console.log('SOS Notification - Body keys:', Object.keys(req.body));
+    console.log('SOS Notification - childLocation value:', req.body.childLocation);
+    console.log('SOS Notification - childLocation type:', typeof req.body.childLocation);
+    
+    const { childName, childLocation, message, severity } = req.body;
+    const userId = req.user.id;
+
+    console.log('SOS Notification via relationships API:', {
+      userId,
       userType: req.user.userType,
-      email: req.user.email
+      childName,
+      childLocation,
+      hasLocation: !!childLocation,
+      childLocationType: typeof childLocation
     });
 
-    const allRelationships = await Relationship.find({
-      $or: [
-        { parentId: req.user.id },
-        { childId: req.user.id }
-      ]
-    }).populate('parentId childId', 'name email userType');
+    // Find parent relationships
+    let parentRelationships = await Relationship.find({
+      childId: userId,
+      status: 'active'
+    }).populate('parentId', 'email name');
 
-    console.log('Debug - All Relationships for User:', JSON.stringify(allRelationships, null, 2));
+    if (parentRelationships.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No active parent relationships found'
+      });
+    }
 
-    res.json({
-      success: true,
-      data: {
-        currentUser: {
-          id: req.user.id,
-          name: req.user.name,
-          userType: req.user.userType,
-          email: req.user.email
-        },
-        relationships: allRelationships
+    console.log(`Found ${parentRelationships.length} parent relationships`);
+
+    // Send email to each parent
+    let emailSent = false;
+    for (const relationship of parentRelationships) {
+      if (relationship.parentId && relationship.parentId.email) {
+        console.log('Sending SOS email to parent:', relationship.parentId.email);
+        const success = await notificationService.sendSOSEmergencyNotification({
+          childId: userId,
+          childName: childName || req.user.name || 'Child',
+          childLocation: childLocation,
+          parentEmail: relationship.parentId.email,
+          severity: severity || 'Emergency'
+        });
+        if (success) {
+          emailSent = true;
+          console.log('SOS email sent successfully to:', relationship.parentId.email);
+        }
       }
-    });
+    }
+
+    if (emailSent) {
+      res.json({
+        success: true,
+        message: `SOS notification sent to ${parentRelationships.length} parent(s)`
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: 'Failed to send SOS notification'
+      });
+    }
+
   } catch (error) {
-    console.error('Debug endpoint error:', error);
+    console.error('SOS notification error:', error);
     res.status(500).json({
       success: false,
-      message: 'Debug endpoint failed'
+      message: 'Server error sending SOS notification'
     });
   }
 });

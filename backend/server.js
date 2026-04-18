@@ -92,7 +92,7 @@ app.use((err, req, res, next) => {
     message: 'Something went wrong!' 
   });
 });
-
+// console.log("USER TYPE:", req.user.userType);
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({ 

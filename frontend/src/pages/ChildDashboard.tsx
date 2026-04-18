@@ -12,7 +12,8 @@ import socketService from '@/services/socket';
 const ChildDashboard = () => {
   const [sosTriggered, setSosTriggered] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [status, setStatus] = useState<string>('Active');
+  const [location, setLocation] = useState<{ latitude: number; longitude: number; address?: string; accuracy?: number; status?: string; triggeredBy?: string; title?: string; description?: string } | null>(null);
   const [isSharingLocation, setIsSharingLocation] = useState(false);
 
   useEffect(() => {
@@ -35,28 +36,189 @@ const ChildDashboard = () => {
   }, []);
 
   const triggerSOS = async () => {
-    if (!currentUser || !location) {
-      alert('Unable to trigger emergency. Please ensure location is enabled.');
+    if (!location) {
+      alert('Please enable location sharing first');
       return;
     }
 
+    // Try the main SOS API first
     try {
-      setSosTriggered(true);
-      
-      // Trigger emergency in backend
-      await emergencyAPI.triggerEmergency({
+      const response = await emergencyAPI.triggerEmergency({
         triggeredBy: 'Manual',
-        latitude: location.latitude,
-        longitude: location.longitude,
-        severity: 'High',
-        message: 'SOS Emergency triggered by child'
+        latitude: location?.latitude || 0,
+        longitude: location?.longitude || 0,
+        severity: 'Critical',
+        message: 'SOS Emergency triggered by child',
+        title: 'SOS Emergency',
+        description: location?.address || 'Unknown Location',
+        address: location?.address || 'Unknown Location',
+        accuracy: location?.accuracy || 0
       });
 
-      setTimeout(() => setSosTriggered(false), 5000);
+      if (response.success) {
+        alert('Emergency sent successfully!');
+        setStatus('Emergency');
+        setSosTriggered(true);
+      } else {
+        // Fallback to direct email notification
+        await sendEmergencyEmailFallback();
+      }
     } catch (error) {
-      console.error('Failed to trigger SOS:', error);
-      alert('Failed to trigger emergency. Please try again.');
-      setSosTriggered(false);
+      console.error('SOS API Error:', error);
+      // If API fails (403, network error, etc.), use email fallback
+      await sendEmergencyEmailFallback();
+    }
+  };
+
+  const sendEmergencyEmailFallback = async () => {
+    try {
+      // Create a direct notification that bypasses routing issues
+      const notificationData = {
+        childName: currentUser?.name || 'Child',
+        childLocation: {
+          latitude: location?.latitude || 0,
+          longitude: location?.longitude || 0,
+          address: location?.address || 'Unknown Location',
+          accuracy: location?.accuracy || 0
+        },
+        message: 'SOS Emergency triggered by child - Direct Email Notification',
+        severity: 'Critical'
+      };
+
+      // Try multiple endpoints to ensure delivery
+      let notificationSent = false;
+      let errorMessage = '';
+
+      // Try the relationships API first (most likely to work)
+      try {
+        const response = await relationshipAPI.sendSOSNotification(notificationData);
+        if (response.success) {
+          notificationSent = true;
+          console.log('SOS notification sent via relationships API');
+        } else {
+          errorMessage = response.message || 'Relationships API notification failed';
+        }
+      } catch (error) {
+        console.log('Relationships API notification failed:', error);
+        errorMessage = error.message;
+      }
+
+      // If relationships API fails, try the emergency universal endpoint
+      if (!notificationSent) {
+        try {
+          const response = await emergencyAPI.sendEmergencyNotification(notificationData);
+          if (response.success) {
+            notificationSent = true;
+            console.log('SOS notification sent via emergency API');
+          } else {
+            errorMessage = response.message || 'Emergency API notification failed';
+          }
+        } catch (error) {
+          console.log('Emergency API notification failed:', error);
+          errorMessage = error.message;
+        }
+      }
+
+      // If both fail, try the legacy endpoint
+      if (!notificationSent) {
+        try {
+          const response = await emergencyAPI.sendEmergencyEmail(notificationData);
+          if (response.success) {
+            notificationSent = true;
+            console.log('SOS notification sent via legacy endpoint');
+          } else {
+            errorMessage = response.message || 'Legacy notification failed';
+          }
+        } catch (error) {
+          console.log('Legacy notification failed:', error);
+          errorMessage = error.message;
+        }
+      }
+
+      // If both API calls fail, create a manual notification
+      if (!notificationSent) {
+        console.log('API endpoints failed, creating manual notification');
+        
+        // Create a comprehensive location message for manual sharing
+        const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${location?.latitude},${location?.longitude}`;
+        const appleMapsUrl = `https://maps.apple.com/?ll=${location?.latitude},${location?.longitude}`;
+        
+        const emergencyMessage = `**SOS EMERGENCY ALERT**\n\n` +
+          `Child: ${currentUser?.name || 'Child'}\n` +
+          `Time: ${new Date().toLocaleString()}\n` +
+          `Status: CRITICAL\n\n` +
+          `Location Details:\n` +
+          `Address: ${location?.address || 'Unknown Location'}\n` +
+          `Coordinates: ${location?.latitude?.toFixed(6)}, ${location?.longitude?.toFixed(6)}\n` +
+          `Accuracy: ±${location?.accuracy || 0}m\n\n` +
+          `Map Links:\n` +
+          `Google Maps: ${googleMapsUrl}\n` +
+          `Apple Maps: ${appleMapsUrl}\n\n` +
+          `Please check on your child immediately!\n\n` +
+          `Sent via BeSafe Emergency System`;
+
+        // Copy to clipboard for manual sharing
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(emergencyMessage);
+          alert(`Emergency notification copied to clipboard! Please send this message to your parents immediately:\n\n${emergencyMessage}`);
+        } else {
+          alert(`EMERGENCY - Please contact your parents immediately with this information:\n\n${emergencyMessage}`);
+        }
+        
+        setStatus('Emergency');
+        setSosTriggered(true);
+        return;
+      }
+
+      // Success case
+      alert('Emergency notification sent successfully to your parents!');
+      setStatus('Emergency');
+      setSosTriggered(true);
+
+    } catch (error) {
+      console.error('Emergency notification error:', error);
+      alert('Emergency notification failed. Please call your parents immediately!');
+    }
+  };
+
+  
+  const shareLocationWithMaps = () => {
+    if (!location) {
+      alert('No location available to share');
+      return;
+    }
+
+    const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${location?.latitude},${location?.longitude}`;
+    const appleMapsUrl = `https://maps.apple.com/?ll=${location?.latitude},${location?.longitude}`;
+    
+    const message = `📍 My Current Location\n\n` +
+      `Address: ${location?.address || 'Unknown'}\n` +
+      `Coordinates: ${location?.latitude?.toFixed(6)}, ${location?.longitude?.toFixed(6)}\n\n` +
+      `🗺️ Google Maps: ${googleMapsUrl}\n` +
+      `🍎 Apple Maps: ${appleMapsUrl}\n\n` +
+      `Sent via BeSafe Child Tracking System`;
+
+    // Copy to clipboard functionality
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(message)
+        .then(() => {
+          alert('Location and map links copied to clipboard!');
+        })
+        .catch(err => {
+          console.error('Failed to copy:', err);
+          alert('Failed to copy location to clipboard');
+        });
+    } else {
+      // Fallback: create a temporary textarea with the message
+      const textarea = document.createElement('textarea');
+      textarea.value = message;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      alert('Location and map links copied to clipboard!');
     }
   };
 
@@ -132,6 +294,7 @@ const ChildDashboard = () => {
     
     callParentFunc();
   };
+  
 
   return (
     <div className="flex min-h-screen bg-secondary/30">
@@ -211,6 +374,18 @@ const ChildDashboard = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.6 }}
+              className="flex flex-col items-center gap-2 p-4 bg-card rounded-2xl shadow-depth hover:shadow-depth-hover transition-all active:scale-95"
+            >
+              <div className="w-10 h-10 bg-accent/10 rounded-full flex items-center justify-center">
+                <ShieldCheck className="w-5 h-5 text-accent" />
+              </div>
+              <span className="text-xs font-medium text-foreground">Safety Status</span>
+            </motion.button>
+
+            <motion.button
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6 }}
               onClick={callParent}
               className="flex flex-col items-center gap-2 p-4 bg-card rounded-2xl shadow-depth hover:shadow-depth-hover transition-all active:scale-95"
             >
@@ -219,22 +394,7 @@ const ChildDashboard = () => {
               </div>
               <span className="text-xs font-medium text-foreground">Call Parent</span>
             </motion.button>
-
-            <motion.button
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.7 }}
-              className="flex flex-col items-center gap-2 p-4 bg-card rounded-2xl shadow-depth hover:shadow-depth-hover transition-all active:scale-95"
-            >
-              <div className="w-10 h-10 bg-accent/10 rounded-full flex items-center justify-center">
-                <ShieldCheck className="w-5 h-5 text-accent" />
-              </div>
-              <span className="text-xs font-medium text-foreground">Safety Status</span>
-            </motion.button>
           </div>
-
-          {/* Emergency Contacts */}
-          <EmergencyContacts />
         </div>
       </main>
       <ChatbotWidget role="child" />
