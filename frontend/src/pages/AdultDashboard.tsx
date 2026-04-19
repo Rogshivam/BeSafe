@@ -64,13 +64,60 @@ const AdultDashboard = () => {
       // Get current location
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
-          await emergencyAPI.triggerEmergency({
-            triggeredBy: 'Manual',
+          const location = {
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
-            severity: 'High',
-            message: 'Emergency triggered by adult user'
-          });
+            address: 'Current Location',
+            accuracy: pos.coords.accuracy
+          };
+
+          try {
+            // Try the main SOS API first
+            const response = await emergencyAPI.triggerEmergency({
+              triggeredBy: 'Manual',
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              severity: 'Critical',
+              message: 'SOS Emergency triggered by adult',
+              title: 'SOS Emergency',
+              description: 'Emergency triggered by adult user',
+              address: 'Current Location'
+            });
+
+            if (response.success) {
+              alert('Emergency sent successfully!');
+            }
+          } catch (primaryError) {
+            console.error('Primary emergency API failed:', primaryError);
+            
+            // Fallback: Try relationships API for SOS notification
+            try {
+              const sosResponse = await relationshipAPI.sendSOSNotification({
+                childName: currentUser.name,
+                childLocation: location,
+                message: 'SOS Emergency triggered by adult',
+                severity: 'Critical'
+              });
+              
+              if (sosResponse.success) {
+                alert('SOS notification sent to parents!');
+              } else {
+                throw new Error('SOS notification failed');
+              }
+            } catch (fallbackError) {
+              console.error('SOS notification fallback failed:', fallbackError);
+              
+              // Final fallback: Manual clipboard message
+              const emergencyMessage = `🚨 EMERGENCY ALERT 🚨\n\nUser: ${currentUser.name}\nTime: ${new Date().toLocaleString()}\nLocation: ${location.latitude}, ${location.longitude}\n\nThis is an emergency. Please contact immediately!`;
+              
+              try {
+                await navigator.clipboard.writeText(emergencyMessage);
+                alert('Emergency details copied to clipboard. Share with your contacts manually.');
+              } catch (clipboardError) {
+                alert('Emergency triggered but all notification methods failed. Please contact emergency services manually.');
+              }
+            }
+          }
         },
         () => {
           alert('Please enable location access to trigger emergency');

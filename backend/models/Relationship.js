@@ -80,9 +80,13 @@ relationshipSchema.index({ status: 1, expiresAt: 1 });
 
 // Static method to find active relationships
 relationshipSchema.statics.findActiveRelationships = function(userId, type = 'parent') {
-  const query = type === 'parent' 
-    ? { parentId: userId, status: 'active' }
-    : { childId: userId, status: 'active' };
+  // Find all active relationships where user is involved (either as parent or child)
+  const query = {
+    $or: [
+      { parentId: userId, status: 'active' },
+      { childId: userId, status: 'active' }
+    ]
+  };
   
   return this.find(query)
     .populate('parentId', 'name email phone type')
@@ -91,9 +95,13 @@ relationshipSchema.statics.findActiveRelationships = function(userId, type = 'pa
 
 // Static method to find pending requests
 relationshipSchema.statics.findPendingRequests = function(userId, type = 'parent') {
-  const query = type === 'parent'
-    ? { parentId: userId, status: 'pending' }
-    : { childId: userId, status: 'pending' };
+  // Find all pending requests where user is involved (either as parent or child)
+  const query = {
+    $or: [
+      { parentId: userId, status: 'pending' },
+      { childId: userId, status: 'pending' }
+    ]
+  };
   
   return this.find(query)
     .populate('parentId', 'name email phone type')

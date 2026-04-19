@@ -22,7 +22,7 @@ router.post('/request', auth, validateRelationshipRequest, async (req, res) => {
 
     // Validate relationship type based on user role
     const validRelationships = {
-      parent: ['parent-child', 'guardian-ward'],
+      parent: ['parent-child', 'guardian-ward', 'guardian-adult'], // Parents can connect to children and adults
       child: ['parent-child'],
       adult: ['guardian-adult'],
       member: ['guardian-adult'], // Handle Member type as adult
@@ -68,7 +68,7 @@ router.post('/request', auth, validateRelationshipRequest, async (req, res) => {
     
     // Map user role to initiatedBy enum values
     const initiatedByRole = userRole === 'parent' ? 'parent' : 
-                          userRole === 'child' ? 'child' : 'adult';
+                          userRole === 'child' ? 'child' : 'adult'; // Adult-to-parent also uses 'adult'
     
     const relationship = new Relationship({
       parentId: isRequesterParent ? userId : targetUserId,

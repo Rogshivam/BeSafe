@@ -129,7 +129,7 @@ const [selectedChild, setSelectedChild] = useState<any | null>(null);
   //     // Refresh pending requests
   //     fetchPendingRequests();
       
-  //     alert('Child request sent successfully!');
+  //     alert('Family member request sent successfully!');
   //   } catch (error) {
   //     console.error('Failed to send child request:', error);
   //     alert('Failed to send child request. Please try again.');
@@ -163,10 +163,10 @@ const sendChildRequest = async (targetUserId: string, targetUserType: string) =>
     fetchPendingRequests();
     fetchSentRequests();
 
-    alert('Child request sent successfully! ✅');
+    alert('Request sent successfully!');
   } catch (error) {
-    console.error('Failed to send child request:', error);
-    alert('Failed to send child request ❌');
+    console.error('Failed to send request:', error);
+    alert('Failed to send request ');
   } finally {
     setLoading(false);
   }
@@ -250,28 +250,28 @@ const sendChildRequest = async (targetUserId: string, targetUserType: string) =>
           {/* Header */}
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-3xl font-bold text-foreground">Child Information</h1>
-              <p className="text-muted-foreground mt-1">Manage your children and their permissions</p>
+              <h1 className="text-3xl font-bold text-foreground">Family Members</h1>
+              <p className="text-muted-foreground mt-1">Manage your children and family members and their permissions</p>
             </div>
             <button
               onClick={() => setShowAddChild(true)}
               className="px-6 py-3 gradient-primary text-primary-foreground rounded-xl font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
             >
-              <Plus className="w-5 h-5" /> Add Child
+              <Plus className="w-5 h-5" /> Add Family Member
             </button>
           </div>
 
-          {/* Active Children */}
+          {/* Active Family Members */}
           <div className="bg-card rounded-2xl shadow-depth p-6">
             <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
               <Shield className="w-6 h-6 text-primary" />
-              Active Children ({activeChildren.length})
+              Active Family Members ({activeChildren.length})
             </h2>
             
             {activeChildren.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-muted-foreground">No active children yet</p>
-                <p className="text-sm text-muted-foreground mt-2">Click "Add Child" to get started</p>
+                <p className="text-muted-foreground">No active family members yet</p>
+                <p className="text-sm text-muted-foreground mt-2">Click "Add Family Member" to get started</p>
               </div>
             ) : (
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -371,7 +371,10 @@ const sendChildRequest = async (targetUserId: string, targetUserType: string) =>
                           {request.initiatedBy === 'parent' ? request.childId?.name : request.parentId?.name}
                         </h4>
                         <p className="text-sm text-muted-foreground">
-                          {request.initiatedBy === 'parent' ? 'Child' : 'Parent'} Request
+                          {request.initiatedBy === 'parent' 
+                            ? (request.relationshipType === 'parent-child' ? 'Child' : 'Adult/Individual') + ' Request'
+                            : 'Parent Request'
+                          }
                         </p>
                         {request.requestMessage && (
                           <p className="text-sm text-muted-foreground mt-1">"{request.requestMessage}"</p>
@@ -514,27 +517,27 @@ const sendChildRequest = async (targetUserId: string, targetUserType: string) =>
 
                 {/* Manual Add Option */}
                 <div className="border-t border-border pt-4">
-                  <p className="text-sm text-muted-foreground mb-3">Or add manually (child will need to accept request)</p>
+                  <p className="text-sm text-muted-foreground mb-3">Or add manually (family member will need to accept request)</p>
                   <div className="space-y-3">
                     <input
                       type="text"
                       value={manualChild.name}
                       onChange={(e) => setManualChild({ ...manualChild, name: e.target.value })}
-                      placeholder="Child's name"
+                      placeholder="Family member's name"
                       className="w-full px-3 py-2 border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
                     />
                     <input
                       type="email"
                       value={manualChild.email}
                       onChange={(e) => setManualChild({ ...manualChild, email: e.target.value })}
-                      placeholder="Child's email"
+                      placeholder="Family member's email"
                       className="w-full px-3 py-2 border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
                     />
                     <input
                       type="tel"
                       value={manualChild.phone}
                       onChange={(e) => setManualChild({ ...manualChild, phone: e.target.value })}
-                      placeholder="Child's phone"
+                      placeholder="Family member's phone"
                       className="w-full px-3 py-2 border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
                     />
                   </div>

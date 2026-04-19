@@ -111,7 +111,7 @@ const ParentInfo = () => {
     try {
       setLoading(true);
 
-      const response = await usersAPI.searchUsers(searchQuery, 'Parent');
+      const response = await usersAPI.searchUsers(searchQuery);
 
       if (response.success) {
         setSearchResults(response.data.users || []);
@@ -134,7 +134,7 @@ const ParentInfo = () => {
 
       await relationshipAPI.sendRelationshipRequest({
         targetUserId,
-        relationshipType: currentUserRole === 'child' ? 'parent-child' : 'guardian-adult',
+        relationshipType: 'guardian-adult', // Adult to parent relationship
         requestMessage,
         permissions: {
           locationTracking: true,

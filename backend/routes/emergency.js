@@ -141,7 +141,7 @@ router.post(
       }
 
       // Send SOS email to parent with location sharing links
-      if (emergency.location && user.userType === 'Child') {
+      if (emergency.location && (user.userType === 'Child' || user.userType === 'Individual' || user.userType === 'Adult')) {
         // Find parent relationships
         // const Relationship = require('../models/Relationship.js');
 

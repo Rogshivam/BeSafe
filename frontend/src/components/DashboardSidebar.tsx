@@ -35,6 +35,7 @@ export const DashboardSidebar = () => {
         return parentSidebarItems;
       case 'child':
       case 'adult':
+      case 'individual':
         return childAdultSidebarItems;
       default:
         return baseSidebarItems;
