@@ -12,26 +12,72 @@ import notificationService from '../services/notificationService.js';
 import Relationship from '../models/Relationship.js';
 const router = express.Router();
 
+const cache = new Map();
+const RATE_LIMIT_DELAY = 2000; // 2 seconds between requests
+let lastRequestTime = 0;
+
+export const getCachedAddress = async (lat, lng) => {
+  const key = `${lat},${lng}`;
+
+  // Check cache first
+  if (cache.has(key)) {
+    console.log('Using cached address for:', key);
+    return cache.get(key);
+  }
+
+  // Rate limiting
+  const now = Date.now();
+  const timeSinceLastRequest = now - lastRequestTime;
+  if (timeSinceLastRequest < RATE_LIMIT_DELAY) {
+    const delayTime = RATE_LIMIT_DELAY - timeSinceLastRequest;
+    console.log(`Rate limiting: waiting ${delayTime}ms`);
+    await new Promise(resolve => setTimeout(resolve, delayTime));
+  }
+
+  try {
+    const address = await getAddressFromCoords(lat, lng);
+    cache.set(key, address);
+    lastRequestTime = Date.now();
+    return address;
+  } catch (error) {
+    console.error('Geocoding failed, using coordinates fallback');
+    const fallback = `${parseFloat(lat).toFixed(6)}, ${parseFloat(lng).toFixed(6)}`;
+    cache.set(key, fallback);
+    return fallback;
+  }
+};
+
 const getAddressFromCoords = async (lat, lng) => {
   try {
     const res = await axios.get(
-      `https://nominatim.openstreetmap.org/reverse`,
+      'https://nominatim.openstreetmap.org/reverse',
       {
         params: {
-          lat: lat,
+          format: 'json',
+          lat,
           lon: lng,
-          format: 'json'
+          zoom: 18,
+          addressdetails: 1
         },
         headers: {
-          'User-Agent': 'BeSafe-App'
-        }
+          'User-Agent': 'BeSafe/1.0',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept': 'application/json'
+        },
+        timeout: 15000
       }
     );
 
-    return res.data.display_name || 'Unknown Location';
+    return res.data?.display_name || 'Unknown Location';
   } catch (err) {
-    console.error('Geocoding error:', err.message);
-    return 'Unknown Location';
+    console.error('Geocoding error:', {
+      message: err.message,
+      status: err.response?.status,
+      data: err.response?.data
+    });
+
+    // Return coordinates as fallback if API fails
+    return `${parseFloat(lat).toFixed(6)}, ${parseFloat(lng).toFixed(6)}`;
   }
 };
 // Configure multer for file uploads
@@ -104,26 +150,27 @@ router.post(
           message: 'No emergency contacts configured'
         });
       }
-let resolvedAddress = req.body.address;
+      let resolvedAddress = req.body.address;
 
-// If frontend sends "Unknown", fix it here
-if (!resolvedAddress || resolvedAddress === 'Unknown Location') {
-  resolvedAddress = await getAddressFromCoords(latitudeNum, longitudeNum);
-}
+      // If frontend sends "Unknown", fix it here
+      if (!resolvedAddress || resolvedAddress === 'Unknown Location') {
+        resolvedAddress = await getAddressFromCoords(latitudeNum, longitudeNum);
+      }
       const emergency = new Emergency({
-  individualId: req.user.id,
-  triggeredBy,
-  location: {
-    latitude: latitudeNum,
-    longitude: longitudeNum,
-    address: resolvedAddress,
-  },
-  // console.log('Final Address:', resolvedAddress);
+        individualId: req.user.id,
+        triggeredBy,
+        location: {
+          latitude: latitudeNum,
+          longitude: longitudeNum,
+          address: resolvedAddress,
+        },
+     
+        // console.log('Final Address:', resolvedAddress);
         severity: severity || 'Medium',
 
         title: title || 'Emergency',
         description: description || message || '',
-        message: message || description || '',
+        message: message || description || resolvedAddress,
         image: req.files?.image?.[0]
           ? `/uploads/emergency/${req.files.image[0].filename}`
           : '',
@@ -142,7 +189,7 @@ if (!resolvedAddress || resolvedAddress === 'Unknown Location') {
 
       user.status = 'Emergency';
       await user.save();
-
+// console.error('Geocoding FULL error:', err.response?.data || err.message);
       const notifications = [];
 
       for (const contact of user.emergencyContacts) {
@@ -213,7 +260,7 @@ if (!resolvedAddress || resolvedAddress === 'Unknown Location') {
   }
 );
 //updating emergency status
-router.put('/:emergencyId/status', auth, authorize('Member', 'Individual','Child','Parent'), async (req, res) => {
+router.put('/:emergencyId/status', auth, authorize('Member', 'Individual', 'Child', 'Parent'), async (req, res) => {
   try {
     const { emergencyId } = req.params;
     const { status } = req.body;
@@ -591,47 +638,73 @@ router.get('/children/:childId', auth, async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(50);
 
-    // Transform emergencies to incident format
+    // Transform emergencies to incident format with better error handling
     const incidents = await Promise.all(emergencies.map(async (e) => {
-      const lat = e.location?.latitude || e.latitude;
-      const lng = e.location?.longitude || e.longitude;
-      const address = e.location?.address || e.address;
+      try {
+        const lat = e.location?.latitude || e.latitude;
+        const lng = e.location?.longitude || e.longitude;
+        const address = e.location?.address || e.address;
 
-      let locationText = 'Unknown Location';
+        let locationText = 'Unknown Location';
 
-      // Try to get human-readable address if no address exists
-      if (!address || address.trim() === '' || address === 'Unknown Location') {
-        if (lat && lng) {
-          locationText = await getAddressFromCoords(parseFloat(lat), parseFloat(lng));
+        // Use existing address if available
+        if (address && address.trim() !== '' && address !== 'Unknown Location') {
+          locationText = address;
+        } else if (lat && lng) {
+          // Use cached geocoding function
+          locationText = await getCachedAddress(parseFloat(lat), parseFloat(lng));
         }
-      } else {
-        locationText = address;
-      }
 
-      // Fallback to coordinates if geocoding fails
-      if (locationText === 'Unknown Location' && lat && lng) {
-        locationText = `${parseFloat(lat).toFixed(6)}, ${parseFloat(lng).toFixed(6)}`;
-      }
+        // Ensure description shows location when no description exists
+        let descriptionText = e.description || e.message || "";
+        if (!descriptionText || descriptionText.trim() === '' || descriptionText === 'Unknown Location') {
+          descriptionText = locationText;
+        }
 
-      return {
-        id: e._id || e.id,
-        title: e.title || e.message || "Untitled Incident",
-        description: e.description || e.message || "No description",
-        location: locationText,
-        latitude: lat ? parseFloat(lat) : undefined,
-        longitude: lng ? parseFloat(lng) : undefined,
-        timestamp: e.createdAt,
-        status: (e.status === 'Resolved' ? 'Resolved' : 'Active'),
-        mediaType: e.image
-          ? 'image'
-          : e.audioRecording
-            ? 'video'
-            : undefined,
-        mediaName: e.image || e.audioRecording,
-        childName: e.individualId?.name || 'Unknown'
-      };
+        return {
+          id: e._id || e.id,
+          title: e.title || e.message || "Untitled Incident",
+          description: descriptionText,
+          location: locationText,
+          latitude: lat ? parseFloat(lat) : undefined,
+          longitude: lng ? parseFloat(lng) : undefined,
+          timestamp: e.createdAt,
+          status: (e.status === 'Resolved' ? 'Resolved' : 'Active'),
+          mediaType: e.image
+            ? 'image'
+            : e.audioRecording
+              ? 'video'
+              : undefined,
+          mediaName: e.image || e.audioRecording,
+          childName: e.individualId?.name || 'Unknown'
+        };
+      } catch (err) {
+        console.error('Error processing incident:', e._id, err);
+        // Return basic incident data if processing fails
+        const lat = e.location?.latitude || e.latitude;
+        const lng = e.location?.longitude || e.longitude;
+        const fallbackLocation = `${parseFloat(lat || 0).toFixed(6)}, ${parseFloat(lng || 0).toFixed(6)}`;
+        
+        return {
+          id: e._id || e.id,
+          title: e.title || e.message || "Untitled Incident",
+          description: e.description || e.message || fallbackLocation,
+          location: fallbackLocation,
+          latitude: parseFloat(lat) || undefined,
+          longitude: parseFloat(lng) || undefined,
+          timestamp: e.createdAt,
+          status: (e.status === 'Resolved' ? 'Resolved' : 'Active'),
+          mediaType: e.image
+            ? 'image'
+            : e.audioRecording
+              ? 'video'
+              : undefined,
+          mediaName: e.image || e.audioRecording,
+          childName: e.individualId?.name || 'Unknown'
+        };
+      }
     }));
-console.log(incidents);
+    console.log(incidents);
     res.json({
       success: true,
       data: { emergencies: incidents }
@@ -856,44 +929,69 @@ router.get('/history/:userId', auth, async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(50);
 
-    // Transform emergencies to incident format with improved location handling
+    // Transform emergencies to incident format with better error handling
     const incidents = await Promise.all(emergencies.map(async (e) => {
-      const lat = e.location?.latitude || e.latitude;
-      const lng = e.location?.longitude || e.longitude;
-      const address = e.location?.address || e.address;
+      try {
+        const lat = e.location?.latitude || e.latitude;
+        const lng = e.location?.longitude || e.longitude;
+        const address = e.location?.address || e.address;
 
-      let locationText = 'Unknown Location';
+        let locationText = 'Unknown Location';
 
-      // Try to get human-readable address if no address exists
-      if (!address || address.trim() === '' || address === 'Unknown Location') {
-        if (lat && lng) {
-          locationText = await getAddressFromCoords(parseFloat(lat), parseFloat(lng));
+        // Use existing address if available
+        if (address && address.trim() !== '' && address !== 'Unknown Location') {
+          locationText = address;
+        } else if (lat && lng) {
+          // Use cached geocoding function
+          locationText = await getCachedAddress(parseFloat(lat), parseFloat(lng));
         }
-      } else {
-        locationText = address;
-      }
 
-      // Fallback to coordinates if geocoding fails
-      if (locationText === 'Unknown Location' && lat && lng) {
-        locationText = `${parseFloat(lat).toFixed(6)}, ${parseFloat(lng).toFixed(6)}`;
-      }
+        // Ensure description shows location when no description exists
+        let descriptionText = e.description || e.message || "";
+        if (!descriptionText || descriptionText.trim() === '' || descriptionText === 'Unknown Location') {
+          descriptionText = locationText;
+        }
 
-      return {
-        id: e._id || e.id,
-        title: e.title || e.message || "Untitled Incident",
-        description: e.description || e.message || "No description",
-        location: locationText,
-        latitude: lat ? parseFloat(lat) : undefined,
-        longitude: lng ? parseFloat(lng) : undefined,
-        timestamp: e.createdAt,
-        status: (e.status === 'Resolved' ? 'Resolved' : 'Active'),
-        mediaType: e.image
-          ? 'image'
-          : e.audioRecording
-            ? 'video'
-            : undefined,
-        mediaName: e.image || e.audioRecording
-      };
+        return {
+          id: e._id || e.id,
+          title: e.title || e.message || "Untitled Incident",
+          description: descriptionText,
+          location: locationText,
+          latitude: lat ? parseFloat(lat) : undefined,
+          longitude: lng ? parseFloat(lng) : undefined,
+          timestamp: e.createdAt,
+          status: (e.status === 'Resolved' ? 'Resolved' : 'Active'),
+          mediaType: e.image
+            ? 'image'
+            : e.audioRecording
+              ? 'video'
+              : undefined,
+          mediaName: e.image || e.audioRecording
+        };
+      } catch (err) {
+        console.error('Error processing incident:', e._id, err);
+        // Return basic incident data if processing fails
+        const lat = e.location?.latitude || e.latitude;
+        const lng = e.location?.longitude || e.longitude;
+        const fallbackLocation = `${parseFloat(lat || 0).toFixed(6)}, ${parseFloat(lng || 0).toFixed(6)}`;
+        
+        return {
+          id: e._id || e.id,
+          title: e.title || e.message || "Untitled Incident",
+          description: e.description || e.message || fallbackLocation,
+          location: fallbackLocation,
+          latitude: parseFloat(lat) || undefined,
+          longitude: parseFloat(lng) || undefined,
+          timestamp: e.createdAt,
+          status: (e.status === 'Resolved' ? 'Resolved' : 'Active'),
+          mediaType: e.image
+            ? 'image'
+            : e.audioRecording
+              ? 'video'
+              : undefined,
+          mediaName: e.image || e.audioRecording
+        };
+      }
     }));
 
     res.json({

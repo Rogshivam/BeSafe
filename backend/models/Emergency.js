@@ -37,7 +37,12 @@ const emergencySchema = new mongoose.Schema({
     accuracy: {
       type: Number,
       default: 0
+    },
+    geocodedAt: {
+      type: Number,
+      default: 0
     }
+
   },
   title: {
   type: String,

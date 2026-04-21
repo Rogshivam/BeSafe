@@ -72,33 +72,18 @@ export default function IncidentReport() {
       }
 
       const mapped = res.data.emergencies.map((e: any) => {
-        const lat = e.location?.latitude || e.latitude;
-        const lng = e.location?.longitude || e.longitude;
-        const address = e.location?.address || e.address;
-
-        let locationText = 'Unknown Location';
-
-        if (address && address !== 'Unknown Location') {
-          locationText = address;
-        } else if (lat && lng) {
-          locationText = `${parseFloat(lat).toFixed(6)}, ${parseFloat(lng).toFixed(6)}`;
-        }
-
+        // Use backend-provided data directly
         return {
           id: e._id || e.id,
           title: e.title || e.message || "Untitled Incident",
-          description: e.description || e.message || "No description",
-          location: locationText,
-          latitude: lat ? parseFloat(lat) : undefined,
-          longitude: lng ? parseFloat(lng) : undefined,
+          description: e.description || "No description",
+          location: e.location || "Unknown Location",
+          latitude: e.latitude,
+          longitude: e.longitude,
           timestamp: e.createdAt || e.updatedAt || new Date().toISOString(),
           status: (e.status === 'Resolved' ? 'Resolved' : 'Active') as 'Active' | 'Resolved',
-          mediaType: e.image
-            ? ('image' as const)
-            : e.audioRecording
-              ? ('video' as const)
-              : undefined,
-          mediaName: e.image || e.audioRecording,
+          mediaType: e.mediaType,
+          mediaName: e.mediaName,
           childName: e.childName || undefined
         };
       });
