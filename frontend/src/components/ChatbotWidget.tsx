@@ -17,7 +17,7 @@ const predefinedResponses: Record<string, string> = {
   'am in danger': "🚨 STAY CALM! I'm showing you the emergency call button now. Press it immediately!",
   'i am in danger': "🚨 STAY CALM! I'm showing you the emergency call button now. Press it immediately!",
   'danger': "🚨 If you're in danger:\n1. Press the SOS button\n2. Call emergency services\n3. Share your location\nStay calm, help is coming!",
-  'emergency': "🚨 Emergency options:\n• Call 911 (Police)\n• Call your emergency contacts\n• Send bulk danger alert\n• Share your live location",
+  'emergency': "🚨 Emergency options:\n• Call 100 (Police)\n• Call your emergency contacts\n• Send bulk danger alert\n• Share your live location",
   'location': "📍 Use the 'Send Location' button on the dashboard to share your GPS coordinates with emergency contacts.",
   'call': "📞 Use the Emergency Contacts section to one-tap call any saved contact.",
   'safe': "✅ Glad you're safe! Remember to keep your emergency contacts updated and location sharing on.",
@@ -73,7 +73,7 @@ export const ChatbotWidget = ({ role }: ChatbotWidgetProps) => {
     if (role === 'child') {
       window.open('tel:+1234567890', '_self'); // Parent's number
     } else {
-      window.open('tel:911', '_self');
+      window.open('tel:100', '_self');
     }
   };
 
@@ -111,10 +111,10 @@ export const ChatbotWidget = ({ role }: ChatbotWidgetProps) => {
                         onClick={callEmergency}
                         className="flex-1 py-2 gradient-emergency text-destructive-foreground rounded-xl text-xs font-bold flex items-center justify-center gap-1 active:scale-95"
                       >
-                        <Phone className="w-3 h-3" /> {role === 'child' ? 'Call Parents' : 'Call 911'}
+                        <Phone className="w-3 h-3" /> {role === 'child' ? 'Call Parents' : 'Call 100'}
                       </button>
                       <button
-                        onClick={() => window.open('tel:911', '_self')}
+                        onClick={() => window.open('tel:100', '_self')}
                         className="flex-1 py-2 bg-destructive text-destructive-foreground rounded-xl text-xs font-bold flex items-center justify-center gap-1 active:scale-95"
                       >
                         <AlertTriangle className="w-3 h-3" /> Call Police

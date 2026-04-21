@@ -206,7 +206,7 @@ export const LiveMap = ({ latitude, longitude, address, accuracy, status, isPare
   };
 
 
-  console.log(latitude, longitude);
+  // console.log(latitude, longitude);
   return (
     <div className="rounded-2xl overflow-hidden shadow-depth" style={{ height: '500px' }}>
       {/* Location Sharing Control - Only for non-parents */}
@@ -283,9 +283,10 @@ export const LiveMap = ({ latitude, longitude, address, accuracy, status, isPare
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <RecenterMap latitude={latitude} longitude={longitude} />
         {/* Parent location marker - always show for parent view */}
-        {isParent && (
+        {isParent && latitude && longitude && (
           <Marker
             position={[latitude, longitude]}
+            
             icon={L.divIcon({
               className: 'custom-div-icon',
               html: `<div class="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 border-4 border-white shadow-lg">
@@ -317,7 +318,7 @@ export const LiveMap = ({ latitude, longitude, address, accuracy, status, isPare
         )}
 
         {/* Main user marker - show for non-parents */}
-        {!isParent && (
+        {!isParent && latitude && longitude && (
           <Marker position={[latitude, longitude]}>
             <Popup>
               <div>
@@ -337,35 +338,35 @@ export const LiveMap = ({ latitude, longitude, address, accuracy, status, isPare
         {/* Child location markers for parent view */}
         {isParent && childLocations && childLocations.map((child, index) => (
           <React.Fragment key={child.id}>
-            <Marker
-              key={`current-${child.id}`}
-              position={[child.latitude, child.longitude]}
-              icon={L.divIcon({
-                className: 'custom-div-icon',
-                html: `<div class="flex items-center justify-center w-6 h-6 rounded-full" style="background-color: ${getChildColor(child, index)}">
-                <span class="text-white text-xs font-bold">${child.name.charAt(0).toUpperCase()}</span>
-              </div>`,
-                iconSize: [24, 24],
-                iconAnchor: [12, 12]
-              })}
-            >
-              <Popup>
-                <div>
-                  <strong>{child.name} - Current</strong>
-                  <br />
-                  Status: <span className={`font-semibold ${child.status === 'safe' ? 'text-green-600' :
-                    child.status === 'warning' ? 'text-yellow-600' : 'text-red-600'
-                    }`}>{child.status}</span>
-                  <br />
-                  Last Update: {new Date(child.lastUpdate).toLocaleString()}
-                  <br />
-                  {child.address && `Location: ${child.address}`}
-                </div>
-              </Popup>
-            </Marker>
-
-            {/* Last known location marker */}
-            {child.lastKnownLocation && (
+            {child.latitude && child.longitude && (
+              <Marker
+                key={`current-${child.id}`}
+                position={[child.latitude, child.longitude]}
+                icon={L.divIcon({
+                  className: 'custom-div-icon',
+                  html: `<div class="flex items-center justify-center w-6 h-6 rounded-full" style="background-color: ${getChildColor(child, index)}">
+                  <span class="text-white text-xs font-bold">${child.name.charAt(0).toUpperCase()}</span>
+                </div>`,
+                  iconSize: [24, 24],
+                  iconAnchor: [12, 12]
+                })}
+              >
+                <Popup>
+                  <div>
+                    <strong>{child.name} - Current</strong>
+                    <br />
+                    Status: <span className={`font-semibold ${child.status === 'safe' ? 'text-green-600' :
+                      child.status === 'warning' ? 'text-yellow-600' : 'text-red-600'
+                      }`}>{child.status}</span>
+                    <br />
+                    Last Update: {new Date(child.lastUpdate).toLocaleString()}
+                    <br />
+                    {child.address && `Location: ${child.address}`}
+                  </div>
+                </Popup>
+              </Marker>
+            )}
+            {child.lastKnownLocation && child.lastKnownLocation.latitude && child.lastKnownLocation.longitude && (
               <Marker
                 key={`last-${child.id}`}
                 position={[child.lastKnownLocation.latitude, child.lastKnownLocation.longitude]}

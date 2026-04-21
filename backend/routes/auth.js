@@ -17,10 +17,10 @@ const router = express.Router();
 router.post('/forgot-password', async (req, res) => {
   const { email } = req.body;
 
-  console.log(`Forgot password request for email: ${email}`);
+  // console.log(`Forgot password request for email: ${email}`);
 
   if (!email) {
-    console.log('Forgot password failed: Email required');
+    // console.log('Forgot password failed: Email required');
     return res.status(400).json({
       success: false,
       message: 'Email is required',
@@ -29,7 +29,7 @@ router.post('/forgot-password', async (req, res) => {
 
   const user = await User.findOne({ email });
   if (!user) {
-    console.log(`Forgot password: User not found for email: ${email}`);
+    // console.log(`Forgot password: User not found for email: ${email}`);
     // Always return success=true to avoid leaking existence
     return res.json({
       success: true,
@@ -37,7 +37,7 @@ router.post('/forgot-password', async (req, res) => {
     });
   }
 
-  console.log(`Forgot password: User found - ${user.name} (${user._id})`);
+  // console.log(`Forgot password: User found - ${user.name} (${user._id})`);
 
   // Generate reset token
   const resetToken = crypto.randomBytes(32).toString('hex');
@@ -46,7 +46,7 @@ router.post('/forgot-password', async (req, res) => {
     .update(resetToken)
     .digest('hex');
 
-  console.log(`Generated reset token for user ${user._id}: ${resetToken.substring(0, 10)}...`);
+  // console.log(`Generated reset token for user ${user._id}: ${resetToken.substring(0, 10)}...`);
 
   // Set reset token and expiration (10 minutes)
   user.resetPasswordToken = hashedToken;
@@ -54,15 +54,15 @@ router.post('/forgot-password', async (req, res) => {
 
   try {
     await user.save();
-    console.log(`Reset token saved for user: ${user._id}, expires: ${new Date(user.resetPasswordExpire).toISOString()}`);
+    // console.log(`Reset token saved for user: ${user._id}, expires: ${new Date(user.resetPasswordExpire).toISOString()}`);
 
     // Send password reset email
     const emailSent = await NotificationService.sendPasswordResetEmail(email, resetToken);
     
     if (emailSent) {
-      console.log(`Password reset email sent to: ${email}`);
+      // console.log(`Password reset email sent to: ${email}`);
     } else {
-      console.log(`Failed to send password reset email to: ${email}`);
+      // console.log(`Failed to send password reset email to: ${email}`);
     }
 
     res.json({
@@ -93,14 +93,14 @@ router.put('/reset-password/:token', async (req, res) => {
   const { token } = req.params;
   const { password } = req.body;
 
-  console.log(`=== PASSWORD RESET START ===`);
-  console.log(`Token: ${token}`);
-  console.log(`Password length: ${password?.length || 0}`);
-  console.log(`Request body:`, req.body);
+  // console.log(`=== PASSWORD RESET START ===`);
+  // console.log(`Token: ${token}`);
+  // console.log(`Password length: ${password?.length || 0}`);
+  // console.log(`Request body:`, req.body);
 
   // Validate password
   if (!password || password.length < 6) {
-    console.log('Password reset failed: Password too short');
+    // console.log('Password reset failed: Password too short');
     return res.status(400).json({
       success: false,
       message: 'Password must be at least 6 characters',
@@ -113,7 +113,7 @@ router.put('/reset-password/:token', async (req, res) => {
     .update(token)
     .digest('hex');
 
-  console.log(`Looking for user with hashed token: ${hashedToken.substring(0, 10)}...`);
+  // console.log(`Looking for user with hashed token: ${hashedToken.substring(0, 10)}...`);
 
   // Find user with valid reset token
   const user = await User.findOne({
@@ -122,23 +122,23 @@ router.put('/reset-password/:token', async (req, res) => {
   });
 
   if (!user) {
-    console.log('Password reset failed: Invalid or expired token');
+    // console.log('Password reset failed: Invalid or expired token');
     return res.status(400).json({
       success: false,
       message: 'Invalid or expired token',
     });
   }
 
-  console.log(`Password reset for user: ${user.name} (${user._id})`);
-  console.log(`User has reset token: ${!!user.resetPasswordToken}`);
-  console.log(`Reset token expires: ${user.resetPasswordExpire ? new Date(user.resetPasswordExpire).toISOString() : 'none'}`);
+  // console.log(`Password reset for user: ${user.name} (${user._id})`);
+  // console.log(`User has reset token: ${!!user.resetPasswordToken}`);
+  // console.log(`Reset token expires: ${user.resetPasswordExpire ? new Date(user.resetPasswordExpire).toISOString() : 'none'}`);
 
   try {
     // Hash new password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     
-    console.log(`Generated new password hash length: ${hashedPassword.length}`);
+    // console.log(`Generated new password hash length: ${hashedPassword.length}`);
     
     // Update user password and clear reset token
     // Use direct update to avoid pre-save middleware conflicts
@@ -156,17 +156,17 @@ router.put('/reset-password/:token', async (req, res) => {
       }
     );
 
-    console.log(`Update result: ${updateResult.modifiedCount} documents modified`);
+    // console.log(`Update result: ${updateResult.modifiedCount} documents modified`);
 
     // Verify the update worked by fetching the user again
     const updatedUser = await User.findById(user._id).select('+password');
-    console.log(`Verification - User found: ${updatedUser ? 'Yes' : 'No'}, Password hash length: ${updatedUser?.password?.length || 0}`);
+    // console.log(`Verification - User found: ${updatedUser ? 'Yes' : 'No'}, Password hash length: ${updatedUser?.password?.length || 0}`);
     
     // Test the new password immediately
     const testPasswordValid = await bcrypt.compare(password, updatedUser.password);
-    console.log(`New password test: ${testPasswordValid}`);
+    // console.log(`New password test: ${testPasswordValid}`);
 
-    console.log(`=== PASSWORD RESET SUCCESS ===`);
+    // console.log(`=== PASSWORD RESET SUCCESS ===`);
 
     res.json({
       success: true,
@@ -180,7 +180,7 @@ router.put('/reset-password/:token', async (req, res) => {
 
   } catch (error) {
     console.error('Error updating password:', error);
-    console.log(`=== PASSWORD RESET FAILED ===`);
+    // console.log(`=== PASSWORD RESET FAILED ===`);
     res.status(500).json({
       success: false,
       message: 'Failed to update password. Please try again.',
@@ -236,7 +236,7 @@ router.get('/debug/reset-test/:token', async (req, res) => {
 router.post('/debug/verify-password', async (req, res) => {
   const { email, password } = req.body;
   
-  console.log(`Password verification test for email: ${email}`);
+  // console.log(`Password verification test for email: ${email}`);
 
   if (!email || !password) {
     return res.status(400).json({
@@ -256,17 +256,17 @@ router.post('/debug/verify-password', async (req, res) => {
       });
     }
 
-    console.log(`User found: ${user._id}, Password hash exists: ${!!user.password}, Hash length: ${user.password?.length || 0}`);
+    // console.log(`User found: ${user._id}, Password hash exists: ${!!user.password}, Hash length: ${user.password?.length || 0}`);
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
     
-    console.log(`Password comparison result: ${isPasswordValid}`);
+    // console.log(`Password comparison result: ${isPasswordValid}`);
 
     // Test with a known password hash
     const testPassword = 'test123';
     const testHash = await bcrypt.hash(testPassword, 10);
     const testComparison = await bcrypt.compare(testPassword, testHash);
-    console.log(`Test bcrypt comparison: ${testComparison}`);
+    // console.log(`Test bcrypt comparison: ${testComparison}`);
 
     res.json({
       success: isPasswordValid,
@@ -361,25 +361,25 @@ router.post('/login', validateLogin, handleValidationErrors, async (req, res) =>
   try {
     const { email, password } = req.body;
     
-    console.log(`=== LOGIN ATTEMPT ===`);
-    console.log(`Email: ${email}`);
-    console.log(`Password length: ${password?.length || 0}`);
+    // console.log(`=== LOGIN ATTEMPT ===`);
+    // console.log(`Email: ${email}`);
+    // console.log(`Password length: ${password?.length || 0}`);
 
     // Find user by email with password field
     const user = await User.findOne({ email }).select('+password');
 
     if (!user) {
-      console.log(`Login failed: User not found for email: ${email}`);
+      // console.log(`Login failed: User not found for email: ${email}`);
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
       });
     }
 
-    console.log(`User found: ${user.name} (${user._id})`);
-    console.log(`User active: ${user.isActive}`);
-    console.log(`Password hash exists: ${!!user.password}`);
-    console.log(`Password hash length: ${user.password?.length || 0}`);
+    // console.log(`User found: ${user.name} (${user._id})`);
+    // console.log(`User active: ${user.isActive}`);
+    // console.log(`Password hash exists: ${!!user.password}`);
+    // console.log(`Password hash length: ${user.password?.length || 0}`);
 
     // Check if user is active
     if (!user.isActive) {
@@ -391,19 +391,19 @@ router.post('/login', validateLogin, handleValidationErrors, async (req, res) =>
     }
 
     // Verify password
-    console.log(`Verifying password for user: ${user._id}`);
+    // console.log(`Verifying password for user: ${user._id}`);
     const isPasswordValid = await bcrypt.compare(password, user.password);
-    console.log(`Password verification result: ${isPasswordValid}`);
+    // console.log(`Password verification result: ${isPasswordValid}`);
 
     if (!isPasswordValid) {
-      console.log(`Login failed: Invalid password for user: ${user._id}`);
+      // console.log(`Login failed: Invalid password for user: ${user._id}`);
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
       });
     }
 
-    console.log(`Login successful for user: ${user._id}`);
+    // console.log(`Login successful for user: ${user._id}`);
 
     // Update last active and clear any existing reset tokens
     await User.updateOne(
@@ -422,8 +422,8 @@ router.post('/login', validateLogin, handleValidationErrors, async (req, res) =>
     // Generate token
     const token = generateToken(user._id);
 
-    console.log(`Token generated for user: ${user._id}`);
-    console.log(`=== LOGIN SUCCESS ===`);
+    // console.log(`Token generated for user: ${user._id}`);
+    // console.log(`=== LOGIN SUCCESS ===`);
 
     res.json({
       success: true,

@@ -505,7 +505,7 @@ const sendChildRequest = async (targetUserId: string, targetUserType: string) =>
                       <div
                         key={user._id}
                         onClick={() => {
-                          console.log('Selected child:', user);
+                          // console.log('Selected child:', user);
                           setSelectedChild(user);
                           setSearchResults([]);
                           setSearchQuery('');

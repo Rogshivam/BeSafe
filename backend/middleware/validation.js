@@ -123,7 +123,7 @@ const validateRelationshipRequest = [
     .notEmpty()
     .withMessage('Target user ID is required'),
   body('relationshipType')
-    .isIn(['parent-child', 'guardian-ward', 'guardian-adult','adult-adult'])
+    .isIn(['parent-child', 'guardian-ward', 'guardian-adult'])
     .withMessage('Invalid relationship type'),
   body('requestMessage')
     .optional()

@@ -5,6 +5,7 @@ import { Navbar } from '@/components/Navbar';
 import adultImg from '@/assets/adult-monitoring.jpg';
 import parentImg from '@/assets/parent-monitoring.jpg';
 import childImg from '@/assets/child-safety.jpg';
+import { useNavigate } from 'react-router-dom';
 
 const dashboards = [
   { title: 'Adult Monitoring', desc: 'AI & Manual Monitoring', icon: Shield, img: adultImg, url: '/dashboard/adult', color: 'from-blue-500 to-blue-700' },
@@ -13,9 +14,11 @@ const dashboards = [
 ];
 
 const DashboardSelect = () => (
-  <div className="min-h-screen bg-secondary/30">
+  <div className="min-h-screen bg-secondary/30 ">
     <Navbar />
-    <div className="max-w-5xl mx-auto px-6 py-16">
+    
+   <main className="pt-20">
+    <div className="max-w-5xl mx-auto px-6 py-3">
       <motion.h1
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -52,6 +55,7 @@ const DashboardSelect = () => (
         ))}
       </div>
     </div>
+    </main>
   </div>
 );
 

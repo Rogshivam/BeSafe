@@ -46,11 +46,11 @@ app.use(express.urlencoded({ extended: true }));
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
+  // console.log('User connected:', socket.id);
 
   socket.on('join-room', (userId) => {
     socket.join(userId);
-    console.log(`User ${userId} joined their room`);
+    // console.log(`User ${userId} joined their room`);
   });
 
   socket.on('emergency-trigger', (data) => {
@@ -64,7 +64,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
+    // console.log('User disconnected:', socket.id);
   });
 });
 
@@ -107,8 +107,8 @@ const PORT = process.env.PORT || 5000;
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
     server.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-      console.log('Connected to MongoDB');
+      // console.log(`Server running on port ${PORT}`);
+      // console.log('Connected to MongoDB');
     });
   })
   .catch((error) => {

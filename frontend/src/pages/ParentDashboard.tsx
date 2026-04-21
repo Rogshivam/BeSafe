@@ -274,10 +274,10 @@ const ParentDashboard = () => {
 
               {/* Emergency Call */}
               <button
-                onClick={() => window.open('tel:911', '_self')}
+                onClick={() => window.open('tel:100', '_self')}
                 className="w-full py-3 gradient-emergency text-destructive-foreground rounded-2xl font-bold flex items-center justify-center gap-2 shadow-depth hover:opacity-90 active:scale-95"
               >
-                <Phone className="w-5 h-5" /> Emergency Call (911)
+                <Phone className="w-5 h-5" /> Emergency Call (100)
               </button>
 
               {/* Alerts */}

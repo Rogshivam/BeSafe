@@ -46,7 +46,7 @@ const ResetPassword = () => {
     
     try {
       const res = await axios.get(`${apiUrl}/auth/debug/reset-test/${token}`);
-      console.log('Token test result:', res.data);
+      // console.log('Token test result:', res.data);
       alert(`Token valid: ${res.data.success}\nUser: ${res.data.debug?.user?.email || 'Not found'}`);
     } catch (error) {
       console.error('Token test error:', error);
@@ -71,7 +71,7 @@ const ResetPassword = () => {
           password
         });
         
-        console.log('Password verification result:', verifyRes.data);
+        // console.log('Password verification result:', verifyRes.data);
         alert(`Password verification: ${verifyRes.data.message}\nUser: ${verifyRes.data.debug?.userName}\nLast Active: ${verifyRes.data.debug?.lastActive ? new Date(verifyRes.data.debug.lastActive).toLocaleString() : 'Never'}`);
       } else {
         alert('Cannot verify password - invalid token');

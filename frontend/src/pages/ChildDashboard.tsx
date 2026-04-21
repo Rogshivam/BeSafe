@@ -94,12 +94,12 @@ const ChildDashboard = () => {
         const response = await relationshipAPI.sendSOSNotification(notificationData);
         if (response.success) {
           notificationSent = true;
-          console.log('SOS notification sent via relationships API');
+          // console.log('SOS notification sent via relationships API');
         } else {
           errorMessage = response.message || 'Relationships API notification failed';
         }
       } catch (error) {
-        console.log('Relationships API notification failed:', error);
+        // console.log('Relationships API notification failed:', error);
         errorMessage = error.message;
       }
 
@@ -109,12 +109,12 @@ const ChildDashboard = () => {
           const response = await emergencyAPI.sendEmergencyNotification(notificationData);
           if (response.success) {
             notificationSent = true;
-            console.log('SOS notification sent via emergency API');
+            // console.log('SOS notification sent via emergency API');
           } else {
             errorMessage = response.message || 'Emergency API notification failed';
           }
         } catch (error) {
-          console.log('Emergency API notification failed:', error);
+          // console.log('Emergency API notification failed:', error);
           errorMessage = error.message;
         }
       }
@@ -125,19 +125,19 @@ const ChildDashboard = () => {
           const response = await emergencyAPI.sendEmergencyEmail(notificationData);
           if (response.success) {
             notificationSent = true;
-            console.log('SOS notification sent via legacy endpoint');
+            // console.log('SOS notification sent via legacy endpoint');
           } else {
             errorMessage = response.message || 'Legacy notification failed';
           }
         } catch (error) {
-          console.log('Legacy notification failed:', error);
+          // console.log('Legacy notification failed:', error);
           errorMessage = error.message;
         }
       }
 
       // If both API calls fail, create a manual notification
       if (!notificationSent) {
-        console.log('API endpoints failed, creating manual notification');
+        // console.log('API endpoints failed, creating manual notification');
         
         // Create a comprehensive location message for manual sharing
         const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${location?.latitude},${location?.longitude}`;
@@ -340,7 +340,7 @@ const ChildDashboard = () => {
           </motion.div>
 
           {/* LiveMap with Location Sharing */}
-          <div className="w-full">
+          <div className="w-full sticky">
             <LiveMap
               latitude={location?.latitude || 28.6139}
               longitude={location?.longitude || 77.2090}

@@ -21,7 +21,7 @@ export const getCachedAddress = async (lat, lng) => {
 
   // Check cache first
   if (cache.has(key)) {
-    console.log('Using cached address for:', key);
+    // console.log('Using cached address for:', key);
     return cache.get(key);
   }
 
@@ -30,7 +30,7 @@ export const getCachedAddress = async (lat, lng) => {
   const timeSinceLastRequest = now - lastRequestTime;
   if (timeSinceLastRequest < RATE_LIMIT_DELAY) {
     const delayTime = RATE_LIMIT_DELAY - timeSinceLastRequest;
-    console.log(`Rate limiting: waiting ${delayTime}ms`);
+    // console.log(`Rate limiting: waiting ${delayTime}ms`);
     await new Promise(resolve => setTimeout(resolve, delayTime));
   }
 
@@ -122,8 +122,8 @@ router.post(
   handleValidationErrors,
   async (req, res) => {
     try {
-      console.log('Emergency trigger request body:', req.body);
-      console.log('Emergency trigger files:', req.files);
+      // console.log('Emergency trigger request body:', req.body);
+      // console.log('Emergency trigger files:', req.files);
 
       const {
         triggeredBy,
@@ -164,7 +164,7 @@ router.post(
           longitude: longitudeNum,
           address: resolvedAddress,
         },
-     
+
         // console.log('Final Address:', resolvedAddress);
         severity: severity || 'Medium',
 
@@ -189,7 +189,7 @@ router.post(
 
       user.status = 'Emergency';
       await user.save();
-// console.error('Geocoding FULL error:', err.response?.data || err.message);
+      // console.error('Geocoding FULL error:', err.response?.data || err.message);
       const notifications = [];
 
       for (const contact of user.emergencyContacts) {
@@ -304,12 +304,12 @@ router.post('/notify-parents', auth, async (req, res) => {
     const { childName, childLocation, message, severity } = req.body;
     const userId = req.user.id;
 
-    console.log('SOS Notification request:', {
-      userId,
-      userType: req.user.userType,
-      childName,
-      hasLocation: !!childLocation
-    });
+    // console.log('SOS Notification request:', {
+    //   userId,
+    //   userType: req.user.userType,
+    //   childName,
+    //   hasLocation: !!childLocation
+    // });
 
     // Find parent relationships - works for any user type
     const { default: Relationship } = await import('../models/Relationship.js');
@@ -336,20 +336,20 @@ router.post('/notify-parents', auth, async (req, res) => {
     }
 
     if (parentRelationships.length === 0) {
-      console.log('No parent relationships found for user:', userId);
+      // console.log('No parent relationships found for user:', userId);
       return res.status(404).json({
         success: false,
         message: 'No active parent relationships found. Please add a parent relationship first.'
       });
     }
 
-    console.log(`Found ${parentRelationships.length} parent relationships`);
+    // console.log(`Found ${parentRelationships.length} parent relationships`);
 
     // Send email to each parent
     let emailSent = false;
     for (const relationship of parentRelationships) {
       if (relationship.parentId && relationship.parentId.email) {
-        console.log('Sending email to parent:', relationship.parentId.email);
+        // console.log('Sending email to parent:', relationship.parentId.email);
         const success = await notificationService.sendSOSEmergencyNotification({
           childId: userId,
           childName: childName || req.user.name || 'Child',
@@ -359,9 +359,9 @@ router.post('/notify-parents', auth, async (req, res) => {
         });
         if (success) {
           emailSent = true;
-          console.log('Email sent successfully to:', relationship.parentId.email);
+          // console.log('Email sent successfully to:', relationship.parentId.email);
         } else {
-          console.log('Failed to send email to:', relationship.parentId.email);
+          // console.log('Failed to send email to:', relationship.parentId.email);
         }
       }
     }
@@ -637,7 +637,7 @@ router.get('/children/:childId', auth, async (req, res) => {
       .populate('individualId', 'name phone email')
       .sort({ createdAt: -1 })
       .limit(50);
-
+const childUser = await User.findById(childId).select('name');
     // Transform emergencies to incident format with better error handling
     const incidents = await Promise.all(emergencies.map(async (e) => {
       try {
@@ -684,7 +684,7 @@ router.get('/children/:childId', auth, async (req, res) => {
         const lat = e.location?.latitude || e.latitude;
         const lng = e.location?.longitude || e.longitude;
         const fallbackLocation = `${parseFloat(lat || 0).toFixed(6)}, ${parseFloat(lng || 0).toFixed(6)}`;
-        
+// console.log("individualId raw:", e.individualId);
         return {
           id: e._id || e.id,
           title: e.title || e.message || "Untitled Incident",
@@ -703,8 +703,9 @@ router.get('/children/:childId', auth, async (req, res) => {
           childName: e.individualId?.name || 'Unknown'
         };
       }
+      
     }));
-    console.log(incidents);
+    // console.log(incidents);
     res.json({
       success: true,
       data: { emergencies: incidents }
@@ -974,7 +975,7 @@ router.get('/history/:userId', auth, async (req, res) => {
         const lat = e.location?.latitude || e.latitude;
         const lng = e.location?.longitude || e.longitude;
         const fallbackLocation = `${parseFloat(lat || 0).toFixed(6)}, ${parseFloat(lng || 0).toFixed(6)}`;
-        
+
         return {
           id: e._id || e.id,
           title: e.title || e.message || "Untitled Incident",

@@ -10,11 +10,11 @@ class NotificationService {
   }
 
   initialize() {
-    console.log('Initializing email service...');
-    console.log('EMAIL_USER:', process.env.EMAIL_USER ? 'SET' : 'NOT SET');
-    console.log('EMAIL_PASS:', process.env.EMAIL_PASS ? 'SET' : 'NOT SET');
-    console.log('EMAIL_HOST:', process.env.EMAIL_HOST || 'smtp.gmail.com');
-    console.log('EMAIL_PORT:', process.env.EMAIL_PORT || '587');
+    // console.log('Initializing email service...');
+    // console.log('EMAIL_USER:', process.env.EMAIL_USER ? 'SET' : 'NOT SET');
+    // console.log('EMAIL_PASS:', process.env.EMAIL_PASS ? 'SET' : 'NOT SET');
+    // console.log('EMAIL_HOST:', process.env.EMAIL_HOST || 'smtp.gmail.com');
+    // console.log('EMAIL_PORT:', process.env.EMAIL_PORT || '587');
     
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
       console.warn("EMAIL_USER / EMAIL_PASS not set; email service disabled");
@@ -31,12 +31,12 @@ class NotificationService {
       },
     });
     
-    console.log('Email transporter created successfully');
+    // console.log('Email transporter created successfully');
   }
 
   async sendPasswordResetEmail(email, resetToken) {
     if (!this.emailTransporter || !process.env.EMAIL_USER) {
-      console.log("Email service not configured");
+      // console.log("Email service not configured");
       return false;
     }
 
@@ -74,7 +74,7 @@ class NotificationService {
 
     try {
       const info = await this.emailTransporter.sendMail(mailOptions);
-      console.log("Email sent:", info.messageId);
+      // console.log("Email sent:", info.messageId);
       return true;
     } catch (error) {
       console.error("Email send error:", error);
@@ -128,7 +128,7 @@ class NotificationService {
       }
 
       // Store notification in database (you might want to create a Notification model)
-      console.log('Relationship notification:', notification);
+      // console.log('Relationship notification:', notification);
 
     } catch (error) {
       console.error('Error sending relationship notification:', error);
@@ -138,14 +138,14 @@ class NotificationService {
   async sendSOSEmergencyNotification({ childId, childName, childLocation, parentEmail, severity = 'Emergency' }) {
     try {
       // Debug logging
-      console.log('sendSOSEmergencyNotification called with:', {
-        childId,
-        childName,
-        parentEmail,
-        parentEmailType: typeof parentEmail,
-        hasLocation: !!childLocation,
-        severity
-      });
+      // console.log('sendSOSEmergencyNotification called with:', {
+      //   childId,
+      //   childName,
+      //   parentEmail,
+      //   parentEmailType: typeof parentEmail,
+      //   hasLocation: !!childLocation,
+      //   severity
+      // });
 
       // Validate required parameters
       if (!parentEmail) {
@@ -158,13 +158,13 @@ class NotificationService {
         return false;
       }
 
-      console.log('Sending SOS notification:', {
-        childId,
-        childName,
-        parentEmail,
-        hasLocation: !!childLocation,
-        severity
-      });
+      // console.log('Sending SOS notification:', {
+      //   childId,
+      //   childName,
+      //   parentEmail,
+      //   hasLocation: !!childLocation,
+      //   severity
+      // });
 
       // Get parent user details (optional - just for logging)
       const parent = await User.findOne({ email: parentEmail });
@@ -261,7 +261,7 @@ class NotificationService {
 
       if (this.emailTransporter) {
         const info = await this.emailTransporter.sendMail(mailOptions);
-        console.log(`SOS emergency email sent to ${parentEmail}:`, info.messageId);
+        // console.log(`SOS emergency email sent to ${parentEmail}:`, info.messageId);
         return true;
       }
 

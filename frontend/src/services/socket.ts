@@ -17,12 +17,12 @@ class SocketService {
     });
 
     this.socket.on('connect', () => {
-      console.log('Connected to server');
+      // console.log('Connected to server');
       this.socket?.emit('join-room', userId);
     });
 
     this.socket.on('disconnect', () => {
-      console.log('Disconnected from server');
+      // console.log('Disconnected from server');
     });
 
     return this.socket;

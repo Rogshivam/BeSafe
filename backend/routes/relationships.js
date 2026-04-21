@@ -16,18 +16,18 @@ router.post('/request', auth, validateRelationshipRequest, async (req, res) => {
     const userId = req.user.id;
     const userRole = req.user.userType?.toLowerCase(); // Use userType field and convert to lowercase
 
-    console.log('=== RELATIONSHIP REQUEST DEBUG ===');
-    console.log('Request body:', req.body);
-    console.log('User ID:', userId);
-    console.log('User type (raw):', req.user.userType);
-    console.log('User role (processed):', userRole);
-    console.log('Relationship type requested:', relationshipType);
+    // console.log('=== RELATIONSHIP REQUEST DEBUG ===');
+    // console.log('Request body:', req.body);
+    // console.log('User ID:', userId);
+    // console.log('User type (raw):', req.user.userType);
+    // console.log('User role (processed):', userRole);
+    // console.log('Relationship type requested:', relationshipType);
 
     // Validate relationship type based on user role
     const validRelationships = {
       parent: ['parent-child', 'guardian-ward', 'guardian-adult'], // Parents can connect to children and adults
       child: ['parent-child'],
-      adult: ['guardian-adult'],
+      adult: ['parent-child', 'guardian-adult'], // Adults can send parent-child requests to parents
       member: ['guardian-adult'], // Handle Member type as adult
       individual: ['guardian-adult'] // Handle Individual type as adult
     };
@@ -44,7 +44,7 @@ router.post('/request', auth, validateRelationshipRequest, async (req, res) => {
     //   });
     // }
 
-    console.log('Valid relationships for role:', validRelationships[userRole]);
+    // console.log('Valid relationships for role:', validRelationships[userRole]);
 
     if (!validRelationships[userRole]?.includes(relationshipType)) {
       return res.status(400).json({
@@ -642,22 +642,22 @@ router.get('/child-locations', auth, async (req, res) => {
 // Direct SOS notification for children to notify parents
 router.post('/send-sos-notification', auth, async (req, res) => {
   try {
-    console.log('SOS Notification - Full request body:', req.body);
-    console.log('SOS Notification - Body keys:', Object.keys(req.body));
-    console.log('SOS Notification - childLocation value:', req.body.childLocation);
-    console.log('SOS Notification - childLocation type:', typeof req.body.childLocation);
+    // console.log('SOS Notification - Full request body:', req.body);
+    // console.log('SOS Notification - Body keys:', Object.keys(req.body));
+    // console.log('SOS Notification - childLocation value:', req.body.childLocation);
+    // console.log('SOS Notification - childLocation type:', typeof req.body.childLocation);
 
     const { childName, childLocation, message, severity } = req.body;
     const userId = req.user.id;
 
-    console.log('SOS Notification via relationships API:', {
-      userId,
-      userType: req.user.userType,
-      childName,
-      childLocation,
-      hasLocation: !!childLocation,
-      childLocationType: typeof childLocation
-    });
+    // console.log('SOS Notification via relationships API:', {
+    //   userId,
+    //   userType: req.user.userType,
+    //   childName,
+    //   childLocation,
+    //   hasLocation: !!childLocation,
+    //   childLocationType: typeof childLocation
+    // });
 
     // Find parent relationships
     let parentRelationships = await Relationship.find({
@@ -672,13 +672,13 @@ router.post('/send-sos-notification', auth, async (req, res) => {
       });
     }
 
-    console.log(`Found ${parentRelationships.length} parent relationships`);
+    // console.log(`Found ${parentRelationships.length} parent relationships`);
 
     // Send email to each parent
     let emailSent = false;
     for (const relationship of parentRelationships) {
       if (relationship.parentId && relationship.parentId.email) {
-        console.log('Sending SOS email to parent:', relationship.parentId.email);
+        // console.log('Sending SOS email to parent:', relationship.parentId.email);
         const success = await notificationService.sendSOSEmergencyNotification({
           childId: userId,
           childName: childName || req.user.name || 'Child',
@@ -688,7 +688,7 @@ router.post('/send-sos-notification', auth, async (req, res) => {
         });
         if (success) {
           emailSent = true;
-          console.log('SOS email sent successfully to:', relationship.parentId.email);
+          // console.log('SOS email sent successfully to:', relationship.parentId.email);
         }
       }
     }

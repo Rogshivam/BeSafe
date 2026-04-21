@@ -8,7 +8,10 @@ export const Navbar = () => {
   const { role, logout } = useAuth();
   const location = useLocation();
 
-  const isDashboard = location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/evidence');
+const isDashboard =
+  (location.pathname.startsWith('/dashboard') &&
+   location.pathname !== '/dashboard/select') ||
+  location.pathname.startsWith('/evidence');
 
   if (isDashboard) return null;
 

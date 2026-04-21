@@ -45,7 +45,7 @@ const EvidenceLocker = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        
+
         // Fetch children if user is a parent
         if (role === 'parent') {
           setLoadingChildren(true);
@@ -58,7 +58,7 @@ const EvidenceLocker = () => {
             setLoadingChildren(false);
           }
         }
-        
+
         // Fetch evidence based on selected child or own evidence
         let evidenceRes;
         if (role === 'parent' && selectedChild) {
@@ -66,7 +66,7 @@ const EvidenceLocker = () => {
         } else {
           evidenceRes = await evidenceAPI.getAll();
         }
-        
+
         setEvidence(evidenceRes.data || []);
       } catch (err) {
         console.error('Error fetching evidence:', err);
@@ -110,8 +110,8 @@ const EvidenceLocker = () => {
 
           {/* Child Selection Buttons for Parents */}
           {role === 'parent' && children.length > 0 && (
-            <motion.div 
-              initial={{ opacity: 0, y: 10 }} 
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
               className="bg-card rounded-xl p-4 shadow-lg"
@@ -120,34 +120,32 @@ const EvidenceLocker = () => {
                 <Users className="w-5 h-5 text-primary" />
                 <h3 className="text-lg font-semibold text-foreground">Select Child</h3>
               </div>
-              
+
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => setSelectedChild(null)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    selectedChild === null
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${selectedChild === null
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-secondary text-foreground hover:bg-secondary/80'
-                  }`}
+                    }`}
                 >
-                 My Evidence
+                  My Evidence
                 </button>
-                
+
                 {children.map((child) => (
                   <button
                     key={child.id}
                     onClick={() => setSelectedChild(child.id)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      selectedChild === child.id
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${selectedChild === child.id
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-secondary text-foreground hover:bg-secondary/80'
-                    }`}
+                      }`}
                   >
                     {child.name}
                   </button>
                 ))}
               </div>
-              
+
               {selectedChild && (
                 <div className="mt-3 p-2 bg-blue-50 rounded-lg">
                   <p className="text-sm text-blue-800">
@@ -202,11 +200,12 @@ const EvidenceLocker = () => {
                         <p className="text-xs text-muted-foreground">
                           {new Date(item.createdAt).toLocaleDateString()}
                         </p>
-                        {item.childName && (
+                        
+                        {/* {item.childName && (
                           <p className="text-xs text-blue-600 font-medium">
                             Child: {item.childName}
                           </p>
-                        )}
+                        )} */}
                       </div>
                       <CheckCircle className="w-5 h-5 text-primary" />
                     </div>
