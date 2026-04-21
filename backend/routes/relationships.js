@@ -4,8 +4,11 @@ import User from '../models/User.js';
 import { auth } from '../middleware/auth.js';
 import { validateRelationshipRequest } from '../middleware/validation.js';
 import notificationService from '../services/notificationService.js';
-
+import mongoose from 'mongoose';
 const router = express.Router();
+
+
+
 // Send relationship request (parent to child or child/adult to parent)
 router.post('/request', auth, validateRelationshipRequest, async (req, res) => {
   try {
@@ -28,6 +31,18 @@ router.post('/request', auth, validateRelationshipRequest, async (req, res) => {
       member: ['guardian-adult'], // Handle Member type as adult
       individual: ['guardian-adult'] // Handle Individual type as adult
     };
+    //     const validRelationships = {
+    //   parent: ['parent-child', 'guardian-adult'],
+    //   child: ['parent-child'],
+    //   adult: ['guardian-adult'],
+    // };
+
+    // if (!validRelationships[userRole]) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: 'Invalid user role'
+    //   });
+    // }
 
     console.log('Valid relationships for role:', validRelationships[userRole]);
 
@@ -47,6 +62,14 @@ router.post('/request', auth, validateRelationshipRequest, async (req, res) => {
       });
     }
 
+    // Prevent users from sending requests to themselves
+    if (userId === targetUserId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot send relationship request to yourself'
+      });
+    }
+
     // Check if relationship already exists
     const existingRelationship = await Relationship.findOne({
       $or: [
@@ -62,17 +85,48 @@ router.post('/request', auth, validateRelationshipRequest, async (req, res) => {
         message: 'Relationship already exists or pending'
       });
     }
+    // Remove restrictive validation - let the relationshipType determine the connection
+    // const targetRole = targetUser.userType?.toLowerCase();
+    // if (relationshipType === 'parent-child') {
+    // if (userRole === 'child' && targetRole !== 'parent') {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: 'Child can only connect to parent'
+    //   });
+    // }
 
-    // Determine who is parent and who is child based on relationship type
-    const isRequesterParent = userRole === 'parent';
+    // if (userRole === 'parent' && targetRole !== 'child') {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: 'Parent can only connect to child'
+    //   });
+    // }
+    // }
+
+    // Determine who is parent and who is child based on relationship type and user roles
+    let parentId, childId;
+    
+    if (relationshipType === 'parent-child') {
+      // For parent-child: parent is always parentId, child is always childId
+      parentId = userRole === 'parent' ? userId : targetUserId;
+      childId = userRole === 'parent' ? targetUserId : userId;
+    } else if (relationshipType === 'guardian-adult') {
+      // For guardian-adult: parent is always parentId, adult is always childId
+      parentId = userRole === 'parent' ? userId : targetUserId;
+      childId = userRole === 'parent' ? targetUserId : userId;
+    } else {
+      // Default fallback
+      parentId = userRole === 'parent' ? userId : targetUserId;
+      childId = userRole === 'parent' ? targetUserId : userId;
+    }
     
     // Map user role to initiatedBy enum values
-    const initiatedByRole = userRole === 'parent' ? 'parent' : 
-                          userRole === 'child' ? 'child' : 'adult'; // Adult-to-parent also uses 'adult'
+    const initiatedByRole = userRole === 'parent' ? 'parent' :
+      userRole === 'child' ? 'child' : 'adult';
     
     const relationship = new Relationship({
-      parentId: isRequesterParent ? userId : targetUserId,
-      childId: isRequesterParent ? targetUserId : userId,
+      parentId,
+      childId,
       relationshipType,
       permissions: permissions || {
         locationTracking: true,
@@ -115,12 +169,45 @@ router.post('/request', auth, validateRelationshipRequest, async (req, res) => {
 });
 
 // Get pending requests for current user
+// router.get('/pending', auth, async (req, res) => {
+//   try {
+//     const userId = req.user.id;
+//     const userRole = req.user.userType?.toLowerCase();
+
+//     const pendingRequests = await Relationship.findPendingRequests(userId, userRole);
+
+//     res.json({
+//       success: true,
+//       data: { pendingRequests }
+//     });
+
+//   } catch (error) {
+//     console.error('Error fetching pending requests:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to fetch pending requests'
+//     });
+//   }
+// });
 router.get('/pending', auth, async (req, res) => {
   try {
     const userId = req.user.id;
-    const userRole = req.user.type;
 
-    const pendingRequests = await Relationship.findPendingRequests(userId, userRole);
+    const pendingRequests = await Relationship.find({
+      status: 'pending',
+      $or: [
+        {
+          parentId: userId,
+          initiatedBy: { $ne: 'parent' }, // show only if NOT sent by parent (i.e., sent by child/adult)
+          childId: { $ne: userId } // ensure childId is different from current user
+        },
+        {
+          childId: userId,
+          initiatedBy: { $ne: 'child', $ne: 'adult' }, // show only if NOT sent by child/adult (i.e., sent by parent)
+          parentId: { $ne: userId } // ensure parentId is different from current user
+        }
+      ]
+    }).populate('parentId childId', 'name email phone');
 
     res.json({
       success: true,
@@ -135,7 +222,6 @@ router.get('/pending', auth, async (req, res) => {
     });
   }
 });
-
 // Accept relationship request
 router.post('/:relationshipId/accept', auth, async (req, res) => {
   try {
@@ -155,11 +241,19 @@ router.post('/:relationshipId/accept', auth, async (req, res) => {
     }
 
     // Check if user is part of this relationship
-    if (relationship.parentId._id.toString() !== userId && 
-        relationship.childId._id.toString() !== userId) {
+    if (relationship.parentId._id.toString() !== userId &&
+      relationship.childId._id.toString() !== userId) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to accept this relationship'
+      });
+    }
+
+    // Prevent users from accepting their own requests
+    if (relationship.parentId._id.toString() === relationship.childId._id.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot accept your own relationship request'
       });
     }
 
@@ -173,8 +267,8 @@ router.post('/:relationshipId/accept', auth, async (req, res) => {
     await relationship.accept(responseMessage);
 
     // Send notification to the other party
-    const otherPartyId = relationship.parentId._id.toString() === userId 
-      ? relationship.childId._id 
+    const otherPartyId = relationship.parentId._id.toString() === userId
+      ? relationship.childId._id
       : relationship.parentId._id;
 
     await notificationService.sendRelationshipNotification({
@@ -219,11 +313,19 @@ router.post('/:relationshipId/reject', auth, async (req, res) => {
     }
 
     // Check if user is part of this relationship
-    if (relationship.parentId.toString() !== userId && 
-        relationship.childId.toString() !== userId) {
+    if (relationship.parentId.toString() !== userId &&
+      relationship.childId.toString() !== userId) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to reject this relationship'
+      });
+    }
+
+    // Prevent users from rejecting their own requests
+    if (relationship.parentId.toString() === relationship.childId.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot reject your own relationship request'
       });
     }
 
@@ -237,8 +339,8 @@ router.post('/:relationshipId/reject', auth, async (req, res) => {
     await relationship.reject(responseMessage);
 
     // Send notification to the other party
-    const otherPartyId = relationship.parentId.toString() === userId 
-      ? relationship.childId 
+    const otherPartyId = relationship.parentId.toString() === userId
+      ? relationship.childId
       : relationship.parentId;
 
     await notificationService.sendRelationshipNotification({
@@ -288,11 +390,81 @@ router.get('/active', auth, async (req, res) => {
 });
 
 // Terminate relationship
-router.delete('/:relationshipId', auth, async (req, res) => {
+// router.delete('/:relationshipId', auth, async (req, res) => {
+//   try {
+//     const { relationshipId } = req.params;
+//     const { reason } = req.body;
+//     const userId = req.user.id;
+
+//     const relationship = await Relationship.findById(relationshipId);
+
+//     if (!relationship) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Relationship not found'
+//       });
+//     }
+
+//     // Check if user is part of this relationship
+//     if (relationship.parentId.toString() !== userId &&
+//       relationship.childId.toString() !== userId) {
+//       return res.status(403).json({
+//         success: false,
+//         message: 'Not authorized to terminate this relationship'
+//       });
+//     }
+
+//     if (relationship.status !== 'active') {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Only active relationships can be terminated'
+//       });
+//     }
+
+//     await relationship.terminate(reason);
+
+//     // Send notification to the other party
+//     const otherPartyId = relationship.parentId.toString() === userId
+//       ? relationship.childId
+//       : relationship.parentId;
+
+//     await notificationService.sendRelationshipNotification({
+//       userId: otherPartyId,
+//       type: 'relationship_terminated',
+//       message: 'Relationship terminated',
+//       data: {
+//         relationshipId: relationship._id,
+//         reason
+//       }
+//     });
+
+//     res.json({
+//       success: true,
+//       message: 'Relationship terminated successfully'
+//     });
+
+//   } catch (error) {
+//     console.error('Error terminating relationship:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to terminate relationship'
+//     });
+//   }
+// });
+
+router.delete('/:relationshipId/terminate', auth, async (req, res) => {
   try {
     const { relationshipId } = req.params;
-    const { reason } = req.body;
+    const reason = req.body?.reason || '';
     const userId = req.user.id;
+
+    // ✅ Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(relationshipId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid relationship ID'
+      });
+    }
 
     const relationship = await Relationship.findById(relationshipId);
 
@@ -303,15 +475,18 @@ router.delete('/:relationshipId', auth, async (req, res) => {
       });
     }
 
-    // Check if user is part of this relationship
-    if (relationship.parentId.toString() !== userId && 
-        relationship.childId.toString() !== userId) {
+    // ✅ Safe string comparison
+    const parentId = relationship.parentId.toString();
+    const childId = relationship.childId.toString();
+
+    if (parentId !== userId && childId !== userId) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to terminate this relationship'
       });
     }
 
+    // ✅ Allow terminating even if pending (optional)
     if (relationship.status !== 'active') {
       return res.status(400).json({
         success: false,
@@ -319,31 +494,42 @@ router.delete('/:relationshipId', auth, async (req, res) => {
       });
     }
 
-    await relationship.terminate(reason);
+    // ✅ Update status instead of relying blindly on method
+    relationship.status = 'terminated';
+    relationship.terminatedAt = new Date();
+    relationship.terminationReason = reason;
 
-    // Send notification to the other party
-    const otherPartyId = relationship.parentId.toString() === userId 
-      ? relationship.childId 
-      : relationship.parentId;
+    await relationship.save();
 
-    await notificationService.sendRelationshipNotification({
-      userId: otherPartyId,
-      type: 'relationship_terminated',
-      message: 'Relationship terminated',
-      data: {
-        relationshipId: relationship._id,
-        reason
-      }
-    });
+    // ✅ Identify other user
+    const otherPartyId = parentId === userId ? childId : parentId;
 
-    res.json({
+    // ✅ Send notification safely
+    try {
+      await notificationService.sendRelationshipNotification({
+        userId: otherPartyId,
+        type: 'relationship_terminated',
+        message: 'Relationship terminated',
+        data: {
+          relationshipId: relationship._id,
+          reason
+        }
+      });
+    } catch (notifyError) {
+      console.error('Notification failed:', notifyError);
+      // don't block response
+    }
+
+    return res.json({
       success: true,
-      message: 'Relationship terminated successfully'
+      message: 'Relationship terminated successfully',
+      data: { relationshipId }
     });
 
   } catch (error) {
     console.error('Error terminating relationship:', error);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
       message: 'Failed to terminate relationship'
     });
@@ -460,7 +646,7 @@ router.post('/send-sos-notification', auth, async (req, res) => {
     console.log('SOS Notification - Body keys:', Object.keys(req.body));
     console.log('SOS Notification - childLocation value:', req.body.childLocation);
     console.log('SOS Notification - childLocation type:', typeof req.body.childLocation);
-    
+
     const { childName, childLocation, message, severity } = req.body;
     const userId = req.user.id;
 
@@ -535,9 +721,10 @@ router.get('/sent', auth, async (req, res) => {
 
     // Find all relationships where this user initiated the request
     const sentRequests = await Relationship.find({
+      status: 'pending',
       $or: [
-        { parentId: userId },
-        { childId: userId }
+        { parentId: userId, initiatedBy: 'parent' },
+    { childId: userId, initiatedBy: 'child' }
       ]
     }).populate('parentId childId', 'name email');
 

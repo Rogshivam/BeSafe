@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Search, Plus, X, UserPlus, Send, Phone, MapPin, Shield, ShieldOff, Clock, Check , Mail} from 'lucide-react';
-import { relationshipAPI, usersAPI } from '@/services/api';
+import { relationshipAPI, usersAPI, getCurrentUser } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { DashboardSidebar } from '@/components/DashboardSidebar';
 import { BottomNav } from '@/components/BottomNav';
 interface Child {
   id: string;
+  relationshipId: string; // Add relationship ID for termination
   name: string;
   email: string;
   phone: string;
@@ -66,6 +67,7 @@ const [selectedChild, setSelectedChild] = useState<any | null>(null);
       if (response.success) {
         const children = response.data.activeRelationships.map((rel: any) => ({
           id: rel.childId._id,
+          relationshipId: rel._id, // Include relationship ID for termination
           name: rel.childId.name,
           email: rel.childId.email,
           phone: rel.childId.phone,
@@ -139,6 +141,13 @@ const [selectedChild, setSelectedChild] = useState<any | null>(null);
   // };
 const sendChildRequest = async (targetUserId: string, targetUserType: string) => {
   try {
+    // Prevent self-requests
+    const currentUser = getCurrentUser() as any;
+    if (currentUser && (currentUser.id === targetUserId || currentUser._id === targetUserId)) {
+      alert('Cannot send relationship request to yourself');
+      return;
+    }
+
     setLoading(true);
 
   const relationshipType =
@@ -467,53 +476,49 @@ const sendChildRequest = async (targetUserId: string, targetUserType: string) =>
 
               {/* Search Option */}
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">Search by Email or Phone</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && searchUsers()}
-                      placeholder="Enter email or phone number..."
-                      className="flex-1 px-3 py-2 border border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    />
-                    <button
-                      onClick={searchUsers}
-                      disabled={loading}
-                      className="px-4 py-2 gradient-primary text-primary-foreground rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
-                    >
-                      <Search className="w-4 h-4" />
-                    </button>
-                  </div>
+                {/* Search Existing User */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Search Existing User
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search by email or name..."
+                    className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                  <button
+                    onClick={searchUsers}
+                    disabled={loading}
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                  >
+                    <Search className="w-4 h-4" />
+                  </button>
                 </div>
 
                 {/* Search Results */}
                 {searchResults.length > 0 && (
-  <div className="space-y-2 max-h-40 overflow-y-auto">
-    {searchResults.map((user) => (
-      <div
-        key={user._id}
-        onClick={() => {
-          console.log('Selected child:', user);
-          setSelectedChild(user);
-          setSearchResults([]);
-          setSearchQuery('');
-        }}
-        className={`p-3 rounded-xl border cursor-pointer transition ${
-          selectedChild?._id === user._id
-            ? 'border-primary bg-primary/10'
-            : 'border-border hover:bg-muted'
-        }`}
-      >
-        <p className="font-medium text-foreground">{user.name}</p>
-        <p className="text-sm text-muted-foreground">
-          {user.email} • {user.phone}
-        </p>
-      </div>
-    ))}
-  </div>
-)}
+                  <div className="mt-3 max-h-40 overflow-y-auto border rounded-lg">
+                    {searchResults.map((user) => (
+                      <div
+                        key={user._id}
+                        onClick={() => {
+                          console.log('Selected child:', user);
+                          setSelectedChild(user);
+                          setSearchResults([]);
+                          setSearchQuery('');
+                        }}
+                        className="p-3 hover:bg-muted cursor-pointer border-b last:border-b-0"
+                      >
+                        <div className="font-medium text-foreground">{user.name}</div>
+                        <div className="text-sm text-muted-foreground">{user.email} ? {user.phone}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
                 {/* Manual Add Option */}
                 <div className="border-t border-border pt-4">

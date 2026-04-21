@@ -541,7 +541,7 @@ export const relationshipAPI = {
   },
 
   terminateRelationship: async (relationshipId: string, reason?: string) => {
-    const response = await api.delete(`/relationships/${relationshipId}`, { data: { reason } });
+    const response = await api.delete(`/relationships/${relationshipId}/terminate`, { data: { reason } });
     return response.data;
   },
 

@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
-import { relationshipAPI, usersAPI } from '@/services/api';
+import { relationshipAPI, usersAPI, getCurrentUser } from '@/services/api';
 import { Search, Plus, X, UserPlus, Check, XCircle, Clock, Send } from 'lucide-react';
-import {LiveMap } from '@/components/LiveMap';
+import { LiveMap } from '@/components/LiveMap';
 import { BottomNav } from '@/components/BottomNav';
 import { profile } from 'console';
 import { DashboardSidebar } from '@/components/DashboardSidebar';
 
 interface Parent {
   id: string;
+  relationshipId: string; // Add relationship ID for termination
   name: string;
   email: string;
   phone: string;
@@ -38,7 +39,7 @@ const ParentInfo = () => {
     email: '',
     phone: ''
   });
-  
+
   const [requestMessage, setRequestMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [childLocations, setChildLocations] = useState<any[]>([]);
@@ -80,6 +81,7 @@ const ParentInfo = () => {
       if (response.success) {
         const parents = response.data.activeRelationships.map((rel: any) => ({
           id: rel.parentId._id,
+          relationshipId: rel._id, // Include relationship ID for termination
           name: rel.parentId.name,
           email: rel.parentId.email,
           phone: rel.parentId.phone,
@@ -125,6 +127,13 @@ const ParentInfo = () => {
 
   const sendParentRequest = async (targetUserId: string) => {
     try {
+      // Prevent self-requests
+      const currentUser = getCurrentUser() as any;
+      if (currentUser && (currentUser.id === targetUserId || currentUser._id === targetUserId)) {
+        alert('Cannot send relationship request to yourself');
+        return;
+      }
+
       if (activeParents.some(p => p.id === targetUserId)) {
         alert('Already added as parent');
         return;
@@ -134,7 +143,7 @@ const ParentInfo = () => {
 
       await relationshipAPI.sendRelationshipRequest({
         targetUserId,
-        relationshipType: 'guardian-adult', // Adult to parent relationship
+        relationshipType: getRelationshipType(), // Adult to parent relationship
         requestMessage,
         permissions: {
           locationTracking: true,
@@ -190,13 +199,13 @@ const ParentInfo = () => {
     }
   };
 
-  const removeParent = async (parentId: string) => {
+  const removeParent = async (relationshipId: string) => {
     if (!confirm('Are you sure you want to remove this parent?')) {
       return;
     }
 
     try {
-      await relationshipAPI.terminateRelationship(parentId);
+      await relationshipAPI.terminateRelationship(relationshipId, 'Removed by child/adult');
       fetchActiveParents();
       alert('Parent removed successfully!');
     } catch (error) {
@@ -204,18 +213,29 @@ const ParentInfo = () => {
       alert('Failed to remove parent. Please try again.');
     }
   };
-  if (loading ) {
+const getRelationshipType = () => {
+  if (currentUserRole === 'child') return 'parent-child';
+  if (currentUserRole === 'adult' || currentUserRole === 'individual') {
+    return 'guardian-adult';
+  }
+  if (currentUserRole === 'parent') {
+    return 'parent-child'; // Parent to child
+  }
+  return null;
+};
+
+  if (loading) {
     return (
       <div className="flex min-h-screen bg-secondary/30">
         <DashboardSidebar />
-  
+
         <main className="flex-1 p-6 lg:p-8 flex items-center justify-center">
           <div className="text-center space-y-2">
             <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full mx-auto" />
             <p className="text-sm text-muted-foreground">Loading settings...</p>
           </div>
         </main>
-  
+
         <BottomNav />
       </div>
     );
@@ -223,8 +243,8 @@ const ParentInfo = () => {
 
   return (
     <div className=" flex min-h-screen bg-background ">
-            <DashboardSidebar />
-      
+      <DashboardSidebar />
+
       <div className="max-w-6xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -313,7 +333,7 @@ const ParentInfo = () => {
                       )}
                     </div>
                     <button
-                      onClick={() => removeParent(parent.id)}
+                      onClick={() => removeParent(parent.relationshipId)}
                       className="w-full mt-3 px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
                     >
                       Remove Parent
@@ -398,10 +418,9 @@ const ParentInfo = () => {
                         {request.relationshipType.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        Status: <span className={`font-medium ${
-                          request.status === 'pending' ? 'text-warning' :
+                        Status: <span className={`font-medium ${request.status === 'pending' ? 'text-warning' :
                           request.status === 'active' ? 'text-safe' : 'text-destructive'
-                        }`}>{request.status}</span>
+                          }`}>{request.status}</span>
                       </p>
                       {request.requestMessage && (
                         <p className="text-sm text-muted-foreground mt-1">"{request.requestMessage}"</p>
@@ -472,34 +491,60 @@ const ParentInfo = () => {
                 {/* Search Results */}
                 {searchResults.length > 0 && (
                   <div className="mt-3 max-h-40 overflow-y-auto border rounded-lg">
-                    {searchResults.map((user: any) => (
-                      <div
-                        key={user._id}
-                       onClick={() => {
-  console.log('Selected user:', user);
-  setSelectedParent(user);
-  setSearchResults([]);
-  setSearchQuery('');
-}}
-                        className="p-3 hover:bg-muted cursor-pointer border-b last:border-b-0"
-                      >
-                        <div className="font-medium text-foreground">{user.name}</div>
-                        <div className="text-sm text-muted-foreground">{user.email}</div>
-                      </div>
-                    ))}
+                    {searchResults.map((user: any) => {
+                      const currentUser = getCurrentUser() as any;
+                      const isCurrentUser = currentUser && (currentUser.id === user._id || currentUser._id === user._id);
+                      
+                      return (
+                        <div
+                          key={user._id}
+                          onClick={() => {
+                            if (isCurrentUser) {
+                              alert('Cannot select yourself');
+                              return;
+                            }
+                            
+                            if (selectedParent?._id === user._id) {
+                              setSelectedParent(null); // deselect
+                            } else {
+                              setSelectedParent(user); // select
+                            }
+
+                            setSearchResults([]);
+                            setSearchQuery('');
+                          }}
+                          className={`p-3 border-b last:border-b-0 cursor-pointer ${
+                            isCurrentUser 
+                              ? 'opacity-50 bg-gray-100 cursor-not-allowed' 
+                              : 'hover:bg-muted'
+                          }`}
+                        >
+                          <div className="font-medium text-foreground">
+                            {user.name} {isCurrentUser && '(You)'}
+                          </div>
+                          <div className="text-sm text-muted-foreground">{user.email}</div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
-{selectedParent && (
-  <div className="mt-3 p-3 border rounded-lg bg-green-50">
-    <p className="text-sm font-medium text-green-800">
-      Selected: {selectedParent.name}
-    </p>
-    <p className="text-xs text-green-600">
-      {selectedParent.email}
-    </p>
-  </div>
-)}
+              {selectedParent && (
+                <div className="mt-3 p-3 border rounded-lg bg-green-50">
+                  <p className="text-sm font-medium text-green-800">
+                    Selected: {selectedParent.name}
+                  </p>
+                  <p className="text-xs text-green-600">
+                    {selectedParent.email}
+                  </p>
+                  <button
+                    onClick={() => setSelectedParent(null)}
+                    className="mt-2 text-xs text-red-500 hover:underline"
+                  >
+                    Remove selected parent
+                  </button>
+                </div>
+              )}
               {/* Manual Entry */}
               <div className="mb-6">
                 <label className="block text-sm font-medium text-foreground mb-2">
@@ -554,15 +599,37 @@ const ParentInfo = () => {
                 </button>
                 <button
                   onClick={() => {
-                    const targetUser = selectedParent || manualParent;
                     if (selectedParent?._id) {
-  sendParentRequest(selectedParent._id);
-} else if (manualParent.name && manualParent.email) {
-  alert('Manual parent flow not implemented yet');
-} else {
-  alert('Please select a parent or fill details');
-}
+                      const targetUser = selectedParent;
+
+                      // Allow children and adults to send requests to parents
+                      // Remove validation that was blocking requests
+                      // if (currentUserRole === 'child' && targetRole !== 'parent') {
+                      //   alert('Children can only add parents');
+                      //   return;
+                      // }
+
+                      // if (currentUserRole === 'adult' && targetRole !== 'parent') {
+                      //   alert('Adults can only add guardians (parents)');
+                      //   return;
+                      // }
+
+                      sendParentRequest(selectedParent._id);
+                    } else if (manualParent.name && manualParent.email) {
+                      alert('Manual parent flow not implemented yet');
+                    } else {
+                      alert('Please select a parent or fill details');
+                    }
                   }}
+//                   onClick={() => {
+//                     if (selectedParent?._id) {
+//   sendParentRequest(selectedParent._id);
+// } else if (manualParent.name && manualParent.email) {
+//   alert('Manual parent flow not implemented yet');
+// } else {
+//   alert('Please select a parent or fill details');
+// }
+//                   }}
                   disabled={loading}
                   className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
                 >

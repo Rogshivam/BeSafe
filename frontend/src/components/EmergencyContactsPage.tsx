@@ -305,7 +305,7 @@ export default function EmergencyContactsPage() {
           {/* Top Right Add Button */}
           <button
             onClick={() => setShowAdd(true)}
-            className="absolute right-4 top-0 z-30 w-11 h-11 rounded-full gradient-primary text-primary-foreground shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
+            className="absolute top-[-47px] right-[-13.6rem] z-30 w-11 h-11 rounded-full gradient-primary text-primary-foreground shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
           >
             <UserPlus className="w-5 h-5" />
           </button>

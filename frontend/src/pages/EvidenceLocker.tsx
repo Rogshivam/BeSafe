@@ -153,7 +153,7 @@ const EvidenceLocker = () => {
         </div>
       </main>
 
-      <ChatbotWidget role={role || 'adult'} />
+      <ChatbotWidget role={(role === 'adult' || role === 'parent' || role === 'child') ? role : 'adult'} />
     </div>
   );
 };

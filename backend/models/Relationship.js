@@ -95,11 +95,12 @@ relationshipSchema.statics.findActiveRelationships = function(userId, type = 'pa
 
 // Static method to find pending requests
 relationshipSchema.statics.findPendingRequests = function(userId, type = 'parent') {
-  // Find all pending requests where user is involved (either as parent or child)
+  // Find pending requests where user is the target (not the initiator)
   const query = {
+    status: 'pending',
     $or: [
-      { parentId: userId, status: 'pending' },
-      { childId: userId, status: 'pending' }
+      { parentId: userId, initiatedBy: { $ne: 'parent' } }, // User is parent and someone else (child/adult) initiated
+      { childId: userId, initiatedBy: { $ne: 'child', $ne: 'adult' } } // User is child/adult and someone else (parent) initiated
     ]
   };
   
