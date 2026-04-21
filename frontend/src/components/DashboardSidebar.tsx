@@ -68,7 +68,7 @@ export const DashboardSidebar = () => {
 
       {/* Sidebar */}
       <aside
-      className={`fixed lg:static top-0 left-0 z-50 h-screen bg-dash-dark text-primary-foreground transition-all duration-300 flex flex-col
+      className={`fixed lg:static top-0 left-0 z-50 h-screen  bg-dash-dark text-primary-foreground transition-all duration-300 flex flex-col
           ${collapsed ? 'w-20' : 'w-64'}
           ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
       >

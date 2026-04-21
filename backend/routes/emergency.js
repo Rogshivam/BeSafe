@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import axios from 'axios';
 import Emergency from '../models/Emergency.js';
 import User from '../models/User.js';
 import Message from '../models/Message.js';
@@ -11,6 +12,28 @@ import notificationService from '../services/notificationService.js';
 import Relationship from '../models/Relationship.js';
 const router = express.Router();
 
+const getAddressFromCoords = async (lat, lng) => {
+  try {
+    const res = await axios.get(
+      `https://nominatim.openstreetmap.org/reverse`,
+      {
+        params: {
+          lat: lat,
+          lon: lng,
+          format: 'json'
+        },
+        headers: {
+          'User-Agent': 'BeSafe-App'
+        }
+      }
+    );
+
+    return res.data.display_name || 'Unknown Location';
+  } catch (err) {
+    console.error('Geocoding error:', err.message);
+    return 'Unknown Location';
+  }
+};
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -81,15 +104,21 @@ router.post(
           message: 'No emergency contacts configured'
         });
       }
+let resolvedAddress = req.body.address;
 
+// If frontend sends "Unknown", fix it here
+if (!resolvedAddress || resolvedAddress === 'Unknown Location') {
+  resolvedAddress = await getAddressFromCoords(latitudeNum, longitudeNum);
+}
       const emergency = new Emergency({
-        individualId: req.user.id,
-        triggeredBy,
-        location: {
-          latitude: latitudeNum,
-          longitude: longitudeNum,
-          address: req.body.address || '',
-        },
+  individualId: req.user.id,
+  triggeredBy,
+  location: {
+    latitude: latitudeNum,
+    longitude: longitudeNum,
+    address: resolvedAddress,
+  },
+  // console.log('Final Address:', resolvedAddress);
         severity: severity || 'Medium',
 
         title: title || 'Emergency',
@@ -500,6 +529,123 @@ router.post('/:emergencyId/respond', auth, authorize('Individual', 'Child', 'Mem
     });
   }
 });
+
+// GET parent's children list (reuse from evidence routes)
+router.get('/children', auth, async (req, res) => {
+  try {
+    const parentId = req.user.id;
+
+    // Get all active relationships where this user is the parent
+    const relationships = await Relationship.find({
+      parentId: parentId,
+      status: 'active'
+    }).populate('childId', 'name email phone');
+
+    const children = relationships.map(rel => ({
+      id: rel.childId._id,
+      name: rel.childId.name,
+      email: rel.childId.email,
+      phone: rel.childId.phone,
+      relationshipId: rel._id
+    }));
+
+    res.json({
+      success: true,
+      data: { children }
+    });
+
+  } catch (err) {
+    console.error('Error fetching children:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch children'
+    });
+  }
+});
+
+// GET children's incident reports for parents
+router.get('/children/:childId', auth, async (req, res) => {
+  try {
+    const { childId } = req.params;
+    const parentId = req.user.id;
+
+    // Check if the user is a parent and has a relationship with this child
+    const relationship = await Relationship.findOne({
+      parentId: parentId,
+      childId: childId,
+      status: 'active'
+    });
+
+    if (!relationship) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to view this child\'s incident reports'
+      });
+    }
+
+    // Get incident reports for the specific child
+    const emergencies = await Emergency.find({
+      individualId: childId
+    })
+      .populate('individualId', 'name phone email')
+      .sort({ createdAt: -1 })
+      .limit(50);
+
+    // Transform emergencies to incident format
+    const incidents = await Promise.all(emergencies.map(async (e) => {
+      const lat = e.location?.latitude || e.latitude;
+      const lng = e.location?.longitude || e.longitude;
+      const address = e.location?.address || e.address;
+
+      let locationText = 'Unknown Location';
+
+      // Try to get human-readable address if no address exists
+      if (!address || address.trim() === '' || address === 'Unknown Location') {
+        if (lat && lng) {
+          locationText = await getAddressFromCoords(parseFloat(lat), parseFloat(lng));
+        }
+      } else {
+        locationText = address;
+      }
+
+      // Fallback to coordinates if geocoding fails
+      if (locationText === 'Unknown Location' && lat && lng) {
+        locationText = `${parseFloat(lat).toFixed(6)}, ${parseFloat(lng).toFixed(6)}`;
+      }
+
+      return {
+        id: e._id || e.id,
+        title: e.title || e.message || "Untitled Incident",
+        description: e.description || e.message || "No description",
+        location: locationText,
+        latitude: lat ? parseFloat(lat) : undefined,
+        longitude: lng ? parseFloat(lng) : undefined,
+        timestamp: e.createdAt,
+        status: (e.status === 'Resolved' ? 'Resolved' : 'Active'),
+        mediaType: e.image
+          ? 'image'
+          : e.audioRecording
+            ? 'video'
+            : undefined,
+        mediaName: e.image || e.audioRecording,
+        childName: e.individualId?.name || 'Unknown'
+      };
+    }));
+console.log(incidents);
+    res.json({
+      success: true,
+      data: { emergencies: incidents }
+    });
+
+  } catch (err) {
+    console.error('Error fetching child incident reports:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch child incident reports'
+    });
+  }
+});
+
 // Get emergency details
 router.get('/:emergencyId', auth, async (req, res) => {
   try {
@@ -710,9 +856,49 @@ router.get('/history/:userId', auth, async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(50);
 
+    // Transform emergencies to incident format with improved location handling
+    const incidents = await Promise.all(emergencies.map(async (e) => {
+      const lat = e.location?.latitude || e.latitude;
+      const lng = e.location?.longitude || e.longitude;
+      const address = e.location?.address || e.address;
+
+      let locationText = 'Unknown Location';
+
+      // Try to get human-readable address if no address exists
+      if (!address || address.trim() === '' || address === 'Unknown Location') {
+        if (lat && lng) {
+          locationText = await getAddressFromCoords(parseFloat(lat), parseFloat(lng));
+        }
+      } else {
+        locationText = address;
+      }
+
+      // Fallback to coordinates if geocoding fails
+      if (locationText === 'Unknown Location' && lat && lng) {
+        locationText = `${parseFloat(lat).toFixed(6)}, ${parseFloat(lng).toFixed(6)}`;
+      }
+
+      return {
+        id: e._id || e.id,
+        title: e.title || e.message || "Untitled Incident",
+        description: e.description || e.message || "No description",
+        location: locationText,
+        latitude: lat ? parseFloat(lat) : undefined,
+        longitude: lng ? parseFloat(lng) : undefined,
+        timestamp: e.createdAt,
+        status: (e.status === 'Resolved' ? 'Resolved' : 'Active'),
+        mediaType: e.image
+          ? 'image'
+          : e.audioRecording
+            ? 'video'
+            : undefined,
+        mediaName: e.image || e.audioRecording
+      };
+    }));
+
     res.json({
       success: true,
-      data: { emergencies }
+      data: { emergencies: incidents }
     });
 
   } catch (error) {

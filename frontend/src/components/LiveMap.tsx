@@ -39,7 +39,7 @@ L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
 });
-  const ResizeMap = () => {
+const ResizeMap = () => {
   const map = useMap();
 
   useEffect(() => {
@@ -57,9 +57,9 @@ export const LiveMap = ({ latitude, longitude, address, accuracy, status, isPare
   const [locationUpdateInterval, setLocationUpdateInterval] = useState<NodeJS.Timeout | null>(null);
   const [currentLocation, setCurrentLocation] = useState({ latitude, longitude, address, accuracy, status });
   const [isMounted, setIsMounted] = useState(false);
-useEffect(() => {
-  setIsMounted(true);
-}, []);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
   // Get current user data for ID
   const currentUserData = getCurrentUser();
 
@@ -183,11 +183,11 @@ useEffect(() => {
 
   if (!isMounted) return null;
   if (
-  latitude == null ||
-  longitude == null ||
-  isNaN(latitude) ||
-  isNaN(longitude)
-) {
+    latitude == null ||
+    longitude == null ||
+    isNaN(latitude) ||
+    isNaN(longitude)
+  ) {
     return (
       <div className="h-[400px] flex items-center justify-center bg-card rounded-2xl">
         No location available
@@ -195,15 +195,15 @@ useEffect(() => {
     );
   };
 
-const RecenterMap = ({ latitude, longitude }: { latitude: number; longitude: number }) => {
-  const map = useMap();
+  const RecenterMap = ({ latitude, longitude }: { latitude: number; longitude: number }) => {
+    const map = useMap();
 
-  useEffect(() => {
-    map.setView([latitude, longitude], map.getZoom());
-  }, [latitude, longitude, map]);
+    useEffect(() => {
+      map.setView([latitude, longitude], map.getZoom());
+    }, [latitude, longitude, map]);
 
-  return null;
-};
+    return null;
+  };
 
 
   console.log(latitude, longitude);
@@ -222,8 +222,8 @@ const RecenterMap = ({ latitude, longitude }: { latitude: number; longitude: num
             <button
               onClick={isSharingLocation ? stopLocationSharing : startLocationSharing}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${isSharingLocation
-                  ? 'bg-red-500 text-white hover:bg-red-600'
-                  : 'bg-green-500 text-white hover:bg-green-600'
+                ? 'bg-red-500 text-white hover:bg-red-600'
+                : 'bg-green-500 text-white hover:bg-green-600'
                 }`}
             >
               {isSharingLocation ? (
@@ -261,7 +261,7 @@ const RecenterMap = ({ latitude, longitude }: { latitude: number; longitude: num
               >
                 <div className="flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${child.status === 'safe' ? 'bg-green-500' :
-                      child.status === 'warning' ? 'bg-yellow-500' : 'bg-red-500'
+                    child.status === 'warning' ? 'bg-yellow-500' : 'bg-red-500'
                     }`} />
                   <span className="text-sm font-medium">{child.name}</span>
                 </div>
@@ -274,14 +274,14 @@ const RecenterMap = ({ latitude, longitude }: { latitude: number; longitude: num
         </div>
       )}
 
-    <MapContainer
-  center={[latitude, longitude]}
-  zoom={13}
-  style={{ height: '400px', width: '100%' }}
->
-  {/* <ResizeMap /> */}
-  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-<RecenterMap latitude={latitude} longitude={longitude} />
+      <MapContainer
+        center={[latitude, longitude]}
+        zoom={13}
+        style={{ height: '400px', width: '100%' }}
+      >
+        {/* <ResizeMap /> */}
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <RecenterMap latitude={latitude} longitude={longitude} />
         {/* Parent location marker - always show for parent view */}
         {isParent && (
           <Marker
@@ -354,7 +354,7 @@ const RecenterMap = ({ latitude, longitude }: { latitude: number; longitude: num
                   <strong>{child.name} - Current</strong>
                   <br />
                   Status: <span className={`font-semibold ${child.status === 'safe' ? 'text-green-600' :
-                      child.status === 'warning' ? 'text-yellow-600' : 'text-red-600'
+                    child.status === 'warning' ? 'text-yellow-600' : 'text-red-600'
                     }`}>{child.status}</span>
                   <br />
                   Last Update: {new Date(child.lastUpdate).toLocaleString()}

@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import Emergency from '../models/Emergency.js';
+import Relationship from '../models/Relationship.js';
 import { auth } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -245,6 +246,122 @@ router.post('/save/location', auth, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to save location evidence'
+    });
+  }
+});
+
+// GET children's evidence for parents
+router.get('/children/:childId', auth, async (req, res) => {
+  try {
+    const { childId } = req.params;
+    const parentId = req.user.id;
+
+    // Check if the user is a parent and has a relationship with this child
+    const relationship = await Relationship.findOne({
+      parentId: parentId,
+      childId: childId,
+      status: 'active'
+    });
+
+    if (!relationship) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to view this child\'s evidence'
+      });
+    }
+
+    // Get evidence for the specific child
+    const emergencies = await Emergency.find({
+      individualId: childId
+    }).sort({ createdAt: -1 });
+
+    const evidence = [];
+
+    emergencies.forEach((em) => {
+      // Image
+      if (em.image) {
+        evidence.push({
+          _id: `${em._id}-img`,
+          type: 'Photo',
+          title: em.title || 'Emergency Image',
+          fileUrl: em.image,
+          createdAt: em.createdAt,
+          childName: em.individualId?.name || 'Unknown'
+        });
+      }
+
+      // Audio
+      if (em.audioRecording) {
+        evidence.push({
+          _id: `${em._id}-audio`,
+          type: 'Audio',
+          title: em.title || 'Emergency Audio',
+          fileUrl: em.audioRecording,
+          createdAt: em.createdAt,
+          childName: em.individualId?.name || 'Unknown'
+        });
+      }
+
+      // Location
+      if (em.latitude && em.longitude) {
+        evidence.push({
+          _id: `${em._id}-location`,
+          type: 'Location',
+          title: em.title || 'Location Evidence',
+          location: {
+            latitude: em.latitude,
+            longitude: em.longitude,
+            address: em.address
+          },
+          createdAt: em.createdAt,
+          childName: em.individualId?.name || 'Unknown'
+        });
+      }
+    });
+
+    res.json({
+      success: true,
+      data: evidence
+    });
+
+  } catch (err) {
+    console.error('Error fetching child evidence:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch child evidence'
+    });
+  }
+});
+
+// GET parent's children list
+router.get('/children', auth, async (req, res) => {
+  try {
+    const parentId = req.user.id;
+
+    // Get all active relationships where this user is the parent
+    const relationships = await Relationship.find({
+      parentId: parentId,
+      status: 'active'
+    }).populate('childId', 'name email phone');
+
+    const children = relationships.map(rel => ({
+      id: rel.childId._id,
+      name: rel.childId.name,
+      email: rel.childId.email,
+      phone: rel.childId.phone,
+      relationshipId: rel._id
+    }));
+
+    res.json({
+      success: true,
+      data: { children }
+    });
+
+  } catch (err) {
+    console.error('Error fetching children:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch children'
     });
   }
 });

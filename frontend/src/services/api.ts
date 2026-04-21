@@ -370,6 +370,16 @@ export const emergencyAPI = {
     });
     return response.data;
   },
+
+  getChildren: async () => {
+    const response = await api.get('/emergency/children');
+    return response.data;
+  },
+
+  getChildIncidents: async (childId: string) => {
+    const response = await api.get(`/emergency/children/${childId}`);
+    return response.data;
+  },
 };
 
 // Evidence API
@@ -414,6 +424,16 @@ export const evidenceAPI = {
 
   saveLocation: async (locationData: { latitude: number; longitude: number; address?: string }) => {
     const res = await api.post('/evidence/save/location', locationData);
+    return res.data;
+  },
+
+  getChildren: async () => {
+    const res = await api.get('/evidence/children');
+    return res.data;
+  },
+
+  getChildEvidence: async (childId: string) => {
+    const res = await api.get(`/evidence/children/${childId}`);
     return res.data;
   },
 };

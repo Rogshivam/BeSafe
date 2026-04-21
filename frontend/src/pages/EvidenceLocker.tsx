@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { DashboardSidebar } from '@/components/DashboardSidebar';
 import { ChatbotWidget } from '@/components/ChatbotWidget';
-import { Camera, Mic, Monitor, Eye, Download, CheckCircle } from 'lucide-react';
+import { Camera, Mic, Monitor, Eye, Download, CheckCircle, Users } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useEffect, useState } from 'react';
 import { evidenceAPI } from '@/services/api';
@@ -37,12 +37,37 @@ const EvidenceLocker = () => {
 
   const [evidence, setEvidence] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [children, setChildren] = useState<any[]>([]);
+  const [selectedChild, setSelectedChild] = useState<string | null>(null);
+  const [loadingChildren, setLoadingChildren] = useState(false);
 
   useEffect(() => {
-    const fetchEvidence = async () => {
+    const fetchData = async () => {
       try {
-        const res = await evidenceAPI.getAll();
-        setEvidence(res.data || []);
+        setLoading(true);
+        
+        // Fetch children if user is a parent
+        if (role === 'parent') {
+          setLoadingChildren(true);
+          try {
+            const childrenRes = await evidenceAPI.getChildren();
+            setChildren(childrenRes.data?.children || []);
+          } catch (err) {
+            console.error('Error fetching children:', err);
+          } finally {
+            setLoadingChildren(false);
+          }
+        }
+        
+        // Fetch evidence based on selected child or own evidence
+        let evidenceRes;
+        if (role === 'parent' && selectedChild) {
+          evidenceRes = await evidenceAPI.getChildEvidence(selectedChild);
+        } else {
+          evidenceRes = await evidenceAPI.getAll();
+        }
+        
+        setEvidence(evidenceRes.data || []);
       } catch (err) {
         console.error('Error fetching evidence:', err);
       } finally {
@@ -50,8 +75,8 @@ const EvidenceLocker = () => {
       }
     };
 
-    fetchEvidence();
-  }, []);
+    fetchData();
+  }, [role, selectedChild]);
 
   const handleView = (fileUrl: string) => {
     window.open(`${BASE_URL}${fileUrl}`, '_blank');
@@ -82,6 +107,58 @@ const EvidenceLocker = () => {
               Securely stored evidence files
             </p>
           </motion.div>
+
+          {/* Child Selection Buttons for Parents */}
+          {role === 'parent' && children.length > 0 && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }} 
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="bg-card rounded-xl p-4 shadow-lg"
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <Users className="w-5 h-5 text-primary" />
+                <h3 className="text-lg font-semibold text-foreground">Select Child</h3>
+              </div>
+              
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setSelectedChild(null)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    selectedChild === null
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-secondary text-foreground hover:bg-secondary/80'
+                  }`}
+                >
+                 My Evidence
+                </button>
+                
+                {children.map((child) => (
+                  <button
+                    key={child.id}
+                    onClick={() => setSelectedChild(child.id)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      selectedChild === child.id
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary text-foreground hover:bg-secondary/80'
+                    }`}
+                  >
+                    {child.name}
+                  </button>
+                ))}
+              </div>
+              
+              {selectedChild && (
+                <div className="mt-3 p-2 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    Showing evidence for: <span className="font-medium">
+                      {children.find(c => c.id === selectedChild)?.name}
+                    </span>
+                  </p>
+                </div>
+              )}
+            </motion.div>
+          )}
 
           {/* Loading */}
           {loading && (
@@ -125,6 +202,11 @@ const EvidenceLocker = () => {
                         <p className="text-xs text-muted-foreground">
                           {new Date(item.createdAt).toLocaleDateString()}
                         </p>
+                        {item.childName && (
+                          <p className="text-xs text-blue-600 font-medium">
+                            Child: {item.childName}
+                          </p>
+                        )}
                       </div>
                       <CheckCircle className="w-5 h-5 text-primary" />
                     </div>

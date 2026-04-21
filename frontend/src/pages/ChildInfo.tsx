@@ -250,16 +250,16 @@ const sendChildRequest = async (targetUserId: string, targetUserType: string) =>
   return (
     <div className="flex min-h-screen bg-secondary/30">
       <DashboardSidebar />
-      <div className="max-w-6xl mx-auto space-y-6 pl-10">
+      <div className="max-w-6xl mx-auto space-y-6 pl-10 ">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="space-y-6"
         >
           {/* Header */}
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center ">
             <div>
-              <h1 className="text-3xl font-bold text-foreground">Family Members</h1>
+              <h1 className="text-3xl font-bold text-foreground pl-10 ">Family Members</h1>
               <p className="text-muted-foreground mt-1">Manage your children and family members and their permissions</p>
             </div>
             <button

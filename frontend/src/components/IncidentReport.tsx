@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import {
   Plus, X, MapPin, Clock, CheckCircle,
-  AlertCircle, Upload, Image, Video
+  AlertCircle, Upload, Image, Video, Users
 } from 'lucide-react';
 import { BottomNav } from '@/components/BottomNav';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DashboardSidebar } from './DashboardSidebar';
-import { emergencyAPI } from '@/services/api'; // ✅ use your axios layer
+import { emergencyAPI } from '@/services/api'; // use your axios layer
+import { useAuth } from '@/context/AuthContext';
 
 interface Incident {
   id: string;
@@ -16,12 +17,15 @@ interface Incident {
   latitude?: number;
   longitude?: number;
   timestamp: string;
-  status: 'Open' | 'Resolved';
+  status: 'Active' | 'Resolved';
   mediaType?: 'image' | 'video';
   mediaName?: string;
+  childName?: string;
 }
 
 export default function IncidentReport() {
+  const { role } = useAuth();
+
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -34,41 +38,39 @@ export default function IncidentReport() {
     location: ''
   });
 
-
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [newFile, setNewFile] = useState<File | null>(null);
   const [editFile, setEditFile] = useState<File | null>(null);
-  // ✅ Fetch emergencies → map to incidents
+
+  // Child selection state for parents
+  const [children, setChildren] = useState<any[]>([]);
+  const [selectedChild, setSelectedChild] = useState<string | null>(null);
+  const [loadingChildren, setLoadingChildren] = useState(false);
+
+  // Fetch incidents based on selected child or own incidents
   const fetchIncidents = async () => {
     try {
-      const res = await emergencyAPI.getEmergencyHistory();
-      const position = await new Promise<GeolocationPosition>((resolve, reject) =>
-        navigator.geolocation.getCurrentPosition(resolve, reject)
-      );
+      // Fetch children if user is a parent
+      if (role === 'parent') {
+        setLoadingChildren(true);
+        try {
+          const childrenRes = await emergencyAPI.getChildren();
+          setChildren(childrenRes.data?.children || []);
+        } catch (err) {
+          console.error('Error fetching children:', err);
+        } finally {
+          setLoadingChildren(false);
+        }
+      }
 
-      const { latitude, longitude } = position.coords;
-      // const mapped = res.data.emergencies.map((e: any) => ({
-      //   id: e._id || e.id,
-      //   title: e.title || e.message || "Untitled Incident",
-      //   description: e.description || e.message || "No description",
-      //   location: e.location?.address || 
-      //     (e.location?.latitude && e.location?.longitude 
-      //       ? `${e.location.latitude.toFixed(6)}, ${e.location.longitude.toFixed(6)}`
-      //       : 'Unknown Location'),
-      //   timestamp: e.createdAt,
+      // Fetch incidents based on selected child or own incidents
+      let res;
+      if (role === 'parent' && selectedChild) {
+        res = await emergencyAPI.getChildIncidents(selectedChild);
+      } else {
+        res = await emergencyAPI.getEmergencyHistory();
+      }
 
-      //   status: (e.status === 'Resolved'
-      //     ? 'Resolved'
-      //     : 'Open') as 'Open' | 'Resolved',
-
-      //   mediaType: e.image
-      //     ? ('image' as const)
-      //     : e.audioRecording
-      //       ? ('video' as const)
-      //       : undefined,
-
-      //   mediaName: e.image || e.audioRecording
-      // }));
       const mapped = res.data.emergencies.map((e: any) => {
         const lat = e.location?.latitude || e.latitude;
         const lng = e.location?.longitude || e.longitude;
@@ -89,14 +91,15 @@ export default function IncidentReport() {
           location: locationText,
           latitude: lat ? parseFloat(lat) : undefined,
           longitude: lng ? parseFloat(lng) : undefined,
-          timestamp: e.createdAt,
-          status: (e.status === 'Resolved' ? 'Resolved' : 'Open') as 'Open' | 'Resolved',
+          timestamp: e.createdAt || e.updatedAt || new Date().toISOString(),
+          status: (e.status === 'Resolved' ? 'Resolved' : 'Active') as 'Active' | 'Resolved',
           mediaType: e.image
             ? ('image' as const)
             : e.audioRecording
               ? ('video' as const)
               : undefined,
-          mediaName: e.image || e.audioRecording
+          mediaName: e.image || e.audioRecording,
+          childName: e.childName || undefined
         };
       });
       setIncidents(mapped);
@@ -107,8 +110,7 @@ export default function IncidentReport() {
 
   useEffect(() => {
     fetchIncidents();
-  }, []);
-
+  }, [role, selectedChild]);
 
   // ✅ Submit → trigger emergency API
   const handleSubmit = async () => {
@@ -200,7 +202,7 @@ export default function IncidentReport() {
   const toggleStatus = async (incident: Incident) => {
     try {
       const newStatus =
-        incident.status === 'Open' ? 'Resolved' : 'Open';
+        incident.status === 'Active' ? 'Resolved' : 'Active';
 
       await emergencyAPI.updateEmergencyStatus(incident.id, newStatus);
 
@@ -238,6 +240,7 @@ export default function IncidentReport() {
       console.error(err);
     }
   };
+  // console.log("selectedChildinfo" , children.map(child => child.timestamp));
 
 
   return (
@@ -250,6 +253,56 @@ export default function IncidentReport() {
             <h1 className="text-2xl font-bold text-foreground mb-1">Incident Reports</h1>
             <p className="text-muted-foreground text-sm">Track and report safety incidents</p>
           </motion.div>
+
+          {/* Child Selection Buttons for Parents */}
+          {role === 'parent' && children.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="bg-card rounded-xl p-4 shadow-lg"
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <Users className="w-5 h-5 text-primary" />
+                <h3 className="text-lg font-semibold text-foreground">Select Child</h3>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setSelectedChild(null)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${selectedChild === null
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary text-foreground hover:bg-secondary/80'
+                    }`}
+                >
+                  My Incidents
+                </button>
+
+                {children.map((child) => (
+                  <button
+                    key={child.id}
+                    onClick={() => setSelectedChild(child.id)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${selectedChild === child.id
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-secondary text-foreground hover:bg-secondary/80'
+                      }`}
+                  >
+                    {child.name}
+                  </button>
+                ))}
+              </div>
+
+              {selectedChild && (
+                <div className="mt-3 p-2 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    Showing incidents for: <span className="font-medium">
+                      {children.find(c => c.id === selectedChild)?.name}
+                    </span>
+                  </p>
+                </div>
+              )}
+            </motion.div>
+          )}
         </div>
 
         {/* Incident List */}
@@ -270,11 +323,11 @@ export default function IncidentReport() {
                     e.stopPropagation();
                     toggleStatus(inc);
                   }}
-                  className={`px-2 py-0.5 text-[10px] rounded-full ${inc.status === 'Open'
+                  className={`px-2 py-0.5 text-[10px] rounded-full ${inc.status === 'Active'
                     ? 'bg-red-100 text-red-600'
                     : 'bg-green-100 text-green-600'
                     }`}>
-                  {inc.status === 'Open'
+                  {inc.status === 'Active'
                     ? <AlertCircle className="inline w-3 h-3" />
                     : <CheckCircle className="inline w-3 h-3" />}
                   {inc.status}
@@ -282,6 +335,12 @@ export default function IncidentReport() {
               </div>
 
               <p className="text-xs text-muted-foreground">{inc.description}</p>
+
+              {inc.childName && (
+                <p className="text-xs text-blue-600 font-medium">
+                  Child: {inc.childName}
+                </p>
+              )}
 
               <div className="flex gap-3 text-[10px] text-muted-foreground">
                 <span className="flex gap-1">
@@ -600,7 +659,7 @@ export default function IncidentReport() {
                     onClick={() => toggleStatus(selectedIncident)}
                     className="w-full py-2 bg-primary text-white rounded-xl"
                   >
-                    Mark as {selectedIncident.status === 'Open' ? 'Resolved' : 'Open'}
+                    Mark as {selectedIncident.status === 'Active' ? 'Resolved' : 'Active'}
                   </button>
 
                   {/* EDIT BUTTON */}
