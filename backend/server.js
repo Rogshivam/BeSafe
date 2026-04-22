@@ -28,21 +28,65 @@ const io = new Server(server, {
   },
 });
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+// Production-ready rate limiting with different limits for different endpoints
+const createRateLimit = (windowMs, max, message) => rateLimit({
+  windowMs,
+  max,
+  message: {
+    success: false,
+    message: message || 'Too many requests, please try again later.',
+    retryAfter: Math.ceil(windowMs / 1000)
+  },
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  skip: (req) => {
+    // Skip rate limiting for health checks and static assets
+    return req.path === '/health' || req.path.startsWith('/static');
+  }
 });
+
+// Different rate limits for different types of requests
+const authLimiter = createRateLimit(
+  15 * 60 * 1000, // 15 minutes
+  20, // 20 auth requests per 15 minutes
+  'Too many authentication attempts, please try again later.'
+);
+
+const generalLimiter = createRateLimit(
+  15 * 60 * 1000, // 15 minutes  
+  300, // 300 general requests per 15 minutes
+  'Too many requests, please try again later.'
+);
+
+const emergencyLimiter = createRateLimit(
+  1 * 60 * 1000, // 1 minute
+  10, // 10 emergency requests per minute
+  'Too many emergency requests, please wait before trying again.'
+);
+
+const locationLimiter = createRateLimit(
+  1 * 60 * 1000, // 1 minute
+  30, // 30 location updates per minute
+  'Too many location updates, please slow down.'
+);
+
+const uploadLimiter = createRateLimit(
+  2 * 60 * 1000, // 2 minutes
+  15, // 15 uploads per 2 minutes (more reasonable for normal usage)
+  'Too many file uploads, please wait before trying again.'
+);
 
 // Middleware
 app.use(helmet());
-app.use(limiter);
 app.use(cors({
   origin: process.env.FRONTEND_URL || "http://localhost:3000",
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Apply general rate limiting to all routes
+app.use(generalLimiter);
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
@@ -71,17 +115,71 @@ io.on('connection', (socket) => {
 // Make io available to routes
 app.set('io', io);
 
-// Routes
-app.use('/api/auth', authRoutes);
+// Routes with specific rate limiters
+app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/emergency', emergencyRoutes);
-app.use('/api/location', locationRoutes);
+app.use('/api/emergency', emergencyLimiter, emergencyRoutes);
+app.use('/api/location', locationLimiter, locationRoutes);
 app.use('/api/communication', communicationRoutes);
 app.use('/api/relationships', relationshipRoutes);
-app.use('/api/evidence', evidenceRoutes);
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+app.use('/api/evidence', uploadLimiter, evidenceRoutes);
+// Comprehensive health check endpoint
+app.get('/api/health', async (req, res) => {
+  try {
+    const healthCheck = {
+      status: 'OK',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV || 'development',
+      version: process.env.npm_package_version || '1.0.0',
+      services: {
+        database: 'unknown',
+        memory: process.memoryUsage(),
+        cpu: process.cpuUsage()
+      },
+      rateLimits: {
+        general: '300 requests per 15 minutes',
+        auth: '20 requests per 15 minutes',
+        emergency: '10 requests per minute',
+        location: '30 requests per minute',
+        upload: '5 requests per 5 minutes'
+      }
+    };
+
+    // Check database connection
+    try {
+      await mongoose.connection.db.admin().ping();
+      healthCheck.services.database = 'connected';
+    } catch (dbError) {
+      healthCheck.services.database = 'disconnected';
+      healthCheck.status = 'DEGRADED';
+    }
+
+    // Check if we're approaching memory limits
+    const memoryUsage = process.memoryUsage();
+    const memoryUsagePercent = (memoryUsage.heapUsed / memoryUsage.heapTotal) * 100;
+    
+    if (memoryUsagePercent > 90) {
+      healthCheck.status = 'WARNING';
+      healthCheck.memory = {
+        ...healthCheck.memory,
+        usagePercent: memoryUsagePercent,
+        warning: 'High memory usage detected'
+      };
+    }
+
+    const statusCode = healthCheck.status === 'OK' ? 200 : 
+                     healthCheck.status === 'DEGRADED' ? 503 : 200;
+
+    res.status(statusCode).json(healthCheck);
+  } catch (error) {
+    console.error('Health check failed:', error);
+    res.status(503).json({
+      status: 'ERROR',
+      timestamp: new Date().toISOString(),
+      error: 'Health check failed'
+    });
+  }
 });
 app.use('/uploads', express.static('uploads'));
 // Error handling middleware
@@ -107,8 +205,8 @@ const PORT = process.env.PORT || 5000;
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
     server.listen(PORT, () => {
-      // console.log(`Server running on port ${PORT}`);
-      // console.log('Connected to MongoDB');
+      console.log(`Server running on port ${PORT}`);
+      console.log('Connected to MongoDB');
     });
   })
   .catch((error) => {

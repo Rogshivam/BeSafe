@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
+import { requestManager, debouncedRequest, cachedRequest, freshRequest } from '../utils/requestManager';
 
 // API base URL - change this to your backend URL
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -6,11 +7,44 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 // Create axios instance
 const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 15000, // Increased timeout for better reliability
   headers: {
     'Content-Type': 'application/json',
   },
 });
+
+// Enhanced request function with caching and retry logic
+const enhancedRequest = async <T>(
+  url: string,
+  options: RequestInit = {},
+  useCache: boolean = true,
+  debounceKey?: string
+): Promise<T> => {
+  const token = localStorage.getItem('token');
+  const enhancedOptions: RequestInit = {
+    ...options,
+    headers: {
+      'Authorization': token ? `Bearer ${token}` : '',
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  };
+
+  const fullUrl = `${API_BASE_URL}${url}`;
+
+  if (debounceKey) {
+    const debouncedFn = requestManager.debounce(debounceKey, () => 
+      requestManager.request<T>(fullUrl, enhancedOptions), 300
+    );
+    return await debouncedFn();
+  }
+
+  if (useCache) {
+    return await requestManager.request<T>(fullUrl, enhancedOptions, true, true);
+  }
+
+  return await requestManager.request<T>(fullUrl, enhancedOptions, false, true);
+};
 
 // Request interceptor to add auth token
 api.interceptors.request.use(
@@ -292,27 +326,44 @@ export const emergencyAPI = {
       formData.append('audio', files.audio);
     }
 
-    const response = await api.post('/emergency/trigger', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-    return response.data;
+    try {
+      const response = await api.post('/emergency/trigger', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('SOS trigger error:', error);
+      
+      // Enhanced error handling
+      if (error.response?.status === 429) {
+        throw new Error('Too many SOS requests. Please wait before trying again.');
+      } else if (error.response?.status === 500) {
+        throw new Error('Server error while triggering SOS. Please try again.');
+      } else if (error.response?.status === 400) {
+        throw new Error(error.response.data?.message || 'Invalid SOS request data.');
+      } else if (error.name === 'TypeError' || error.message?.includes('Failed to fetch')) {
+        throw new Error('Network error. Please check your internet connection.');
+      } else {
+        throw new Error(error.message || 'Failed to trigger SOS. Please try again.');
+      }
+    }
   },
 
   getActiveEmergencies: async (): Promise<{ success: boolean; data: { emergencies: Emergency[] } }> => {
-    const response = await api.get('/emergency/active');
-    return response.data;
+    return await enhancedRequest('/emergency/active', {}, true, 'active-emergencies');
   },
 
   respondToEmergency: async (emergencyId: string, response: 'Help' | 'Ignore') => {
-    const apiResponse = await api.post(`/emergency/${emergencyId}/respond`, { response });
-    return apiResponse.data;
+    return await enhancedRequest(`/emergency/${emergencyId}/respond`, {
+      method: 'POST',
+      body: JSON.stringify({ response })
+    }, false);
   },
 
   getEmergencyDetails: async (emergencyId: string): Promise<{ success: boolean; data: { emergency: Emergency } }> => {
-    const response = await api.get(`/emergency/${emergencyId}`);
-    return response.data;
+    return await enhancedRequest(`/emergency/${emergencyId}`, {}, true);
   },
 
   // Universal SOS notification - works for all user types
@@ -353,8 +404,7 @@ export const emergencyAPI = {
   },
 
   getEmergencyHistory: async (): Promise<{ success: boolean; data: { emergencies: Emergency[] } }> => {
-    const response = await api.get(`/emergency/history/me`);
-    return response.data;
+    return await enhancedRequest('/emergency/history/me', {}, true, 'emergency-history');
   },
   updateEmergency: async (id: string, formData: FormData) => {
     const response = await api.put(`/emergency/${id}`, formData, {
@@ -385,8 +435,25 @@ export const emergencyAPI = {
 // Evidence API
 export const evidenceAPI = {
   getAll: async () => {
-    const res = await api.get('/evidence');
-    return res.data;
+    try {
+      const res = await api.get('/evidence');
+      return res.data;
+    } catch (error: any) {
+      console.error('Get evidence error:', error);
+      
+      // Enhanced error handling
+      if (error.response?.status === 429) {
+        throw new Error('Too many requests. Please wait before trying again.');
+      } else if (error.response?.status === 500) {
+        throw new Error('Server error while fetching evidence. Please try again.');
+      } else if (error.response?.status === 401) {
+        throw new Error('Unauthorized. Please login again.');
+      } else if (error.name === 'TypeError' || error.message?.includes('Failed to fetch')) {
+        throw new Error('Network error. Please check your internet connection.');
+      } else {
+        throw new Error(error.message || 'Failed to fetch evidence. Please try again.');
+      }
+    }
   },
 
   uploadPhoto: async (file: File) => {
@@ -428,13 +495,49 @@ export const evidenceAPI = {
   },
 
   getChildren: async () => {
-    const res = await api.get('/evidence/children');
-    return res.data;
+    try {
+      const res = await api.get('/evidence/children');
+      return res.data;
+    } catch (error: any) {
+      console.error('Get children error:', error);
+      
+      // Enhanced error handling
+      if (error.response?.status === 429) {
+        throw new Error('Too many requests. Please wait before trying again.');
+      } else if (error.response?.status === 500) {
+        throw new Error('Server error while fetching children. Please try again.');
+      } else if (error.response?.status === 401) {
+        throw new Error('Unauthorized. Please login again.');
+      } else if (error.name === 'TypeError' || error.message?.includes('Failed to fetch')) {
+        throw new Error('Network error. Please check your internet connection.');
+      } else {
+        throw new Error(error.message || 'Failed to fetch children. Please try again.');
+      }
+    }
   },
 
   getChildEvidence: async (childId: string) => {
-    const res = await api.get(`/evidence/children/${childId}`);
-    return res.data;
+    try {
+      const res = await api.get(`/evidence/children/${childId}`);
+      return res.data;
+    } catch (error: any) {
+      console.error('Get child evidence error:', error);
+      
+      // Enhanced error handling
+      if (error.response?.status === 429) {
+        throw new Error('Too many requests. Please wait before trying again.');
+      } else if (error.response?.status === 500) {
+        throw new Error('Server error while fetching child evidence. Please try again.');
+      } else if (error.response?.status === 401) {
+        throw new Error('Unauthorized. Please login again.');
+      } else if (error.response?.status === 404) {
+        throw new Error('Child not found. Please check the child ID.');
+      } else if (error.name === 'TypeError' || error.message?.includes('Failed to fetch')) {
+        throw new Error('Network error. Please check your internet connection.');
+      } else {
+        throw new Error(error.message || 'Failed to fetch child evidence. Please try again.');
+      }
+    }
   },
 };
 
@@ -482,8 +585,25 @@ getCurrentLocation: async (userId: string) => {
     status?: string;
     timestamp?: string;
   }) => {
-    const response = await api.post('/location/update', locationData);
-    return response.data;
+    try {
+      const response = await api.post('/location/update', locationData);
+      return response.data;
+    } catch (error: any) {
+      console.error('Location update error:', error);
+      
+      // Enhanced error handling
+      if (error.response?.status === 429) {
+        throw new Error('Too many location updates. Please slow down.');
+      } else if (error.response?.status === 500) {
+        throw new Error('Server error while updating location. Please try again.');
+      } else if (error.response?.status === 400) {
+        throw new Error(error.response.data?.message || 'Invalid location data.');
+      } else if (error.name === 'TypeError' || error.message?.includes('Failed to fetch')) {
+        throw new Error('Network error. Please check your internet connection.');
+      } else {
+        throw new Error(error.message || 'Failed to update location. Please try again.');
+      }
+    }
   },
 
   getLocationStats: async (userId: string, days?: number) => {
@@ -536,8 +656,27 @@ export const relationshipAPI = {
   },
 
   sendRelationshipRequest: async (data: { targetUserId: string; relationshipType: string; requestMessage?: string; permissions?: any }) => {
-    const response = await api.post('/relationships/request', data);
-    return response.data;
+    try {
+      const response = await api.post('/relationships/request', data);
+      return response.data;
+    } catch (error: any) {
+      console.error('Relationship request error:', error);
+      
+      // Enhanced error handling
+      if (error.response?.status === 429) {
+        throw new Error('Too many relationship requests. Please wait before trying again.');
+      } else if (error.response?.status === 500) {
+        throw new Error('Server error while sending relationship request. Please try again.');
+      } else if (error.response?.status === 400) {
+        throw new Error(error.response.data?.message || 'Invalid relationship request data.');
+      } else if (error.response?.status === 404) {
+        throw new Error('Target user not found. Please check the user ID.');
+      } else if (error.name === 'TypeError' || error.message?.includes('Failed to fetch')) {
+        throw new Error('Network error. Please check your internet connection.');
+      } else {
+        throw new Error(error.message || 'Failed to send relationship request. Please try again.');
+      }
+    }
   },
 
   getPendingRelationships: async () => {
@@ -561,8 +700,37 @@ export const relationshipAPI = {
   },
 
   terminateRelationship: async (relationshipId: string, reason?: string) => {
-    const response = await api.delete(`/relationships/${relationshipId}/terminate`, { data: { reason } });
-    return response.data;
+    try {
+      console.log('API: Calling terminateRelationship with relationshipId:', relationshipId);
+      console.log('API: Full URL:', `/relationships/${relationshipId}/terminate`);
+      console.log('API: Reason:', reason);
+      
+      const response = await api.delete(`/relationships/${relationshipId}/terminate`, { 
+        data: { reason } 
+      });
+      
+      console.log('API: Termination response:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('Terminate relationship error:', error);
+      
+      // Enhanced error handling
+      if (error.response?.status === 429) {
+        throw new Error('Too many requests. Please wait before trying again.');
+      } else if (error.response?.status === 500) {
+        throw new Error('Server error while terminating relationship. Please try again.');
+      } else if (error.response?.status === 403) {
+        throw new Error('Not authorized to terminate this relationship.');
+      } else if (error.response?.status === 400) {
+        throw new Error(error.response.data?.message || 'Invalid termination request.');
+      } else if (error.response?.status === 404) {
+        throw new Error('Relationship not found. Please check the relationship ID.');
+      } else if (error.name === 'TypeError' || error.message?.includes('Failed to fetch')) {
+        throw new Error('Network error. Please check your internet connection.');
+      } else {
+        throw new Error(error.message || 'Failed to terminate relationship. Please try again.');
+      }
+    }
   },
 
   getChildLocations: async () => {

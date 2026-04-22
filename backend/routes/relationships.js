@@ -203,7 +203,7 @@ router.get('/pending', auth, async (req, res) => {
         },
         {
           childId: userId,
-          initiatedBy: { $ne: 'child', $ne: 'adult' }, // show only if NOT sent by child/adult (i.e., sent by parent)
+          initiatedBy: { $nin: ['child', 'adult'] }, // show only if NOT sent by child/adult (i.e., sent by parent)
           parentId: { $ne: userId } // ensure parentId is different from current user
         }
       ]
@@ -389,122 +389,74 @@ router.get('/active', auth, async (req, res) => {
   }
 });
 
-// Terminate relationship
-// router.delete('/:relationshipId', auth, async (req, res) => {
-//   try {
-//     const { relationshipId } = req.params;
-//     const { reason } = req.body;
-//     const userId = req.user.id;
-
-//     const relationship = await Relationship.findById(relationshipId);
-
-//     if (!relationship) {
-//       return res.status(404).json({
-//         success: false,
-//         message: 'Relationship not found'
-//       });
-//     }
-
-//     // Check if user is part of this relationship
-//     if (relationship.parentId.toString() !== userId &&
-//       relationship.childId.toString() !== userId) {
-//       return res.status(403).json({
-//         success: false,
-//         message: 'Not authorized to terminate this relationship'
-//       });
-//     }
-
-//     if (relationship.status !== 'active') {
-//       return res.status(400).json({
-//         success: false,
-//         message: 'Only active relationships can be terminated'
-//       });
-//     }
-
-//     await relationship.terminate(reason);
-
-//     // Send notification to the other party
-//     const otherPartyId = relationship.parentId.toString() === userId
-//       ? relationship.childId
-//       : relationship.parentId;
-
-//     await notificationService.sendRelationshipNotification({
-//       userId: otherPartyId,
-//       type: 'relationship_terminated',
-//       message: 'Relationship terminated',
-//       data: {
-//         relationshipId: relationship._id,
-//         reason
-//       }
-//     });
-
-//     res.json({
-//       success: true,
-//       message: 'Relationship terminated successfully'
-//     });
-
-//   } catch (error) {
-//     console.error('Error terminating relationship:', error);
-//     res.status(500).json({
-//       success: false,
-//       message: 'Failed to terminate relationship'
-//     });
-//   }
-// });
-
 router.delete('/:relationshipId/terminate', auth, async (req, res) => {
   try {
     const { relationshipId } = req.params;
     const reason = req.body?.reason || '';
     const userId = req.user.id;
 
-    // ✅ Validate ObjectId
+    console.log('Termination request:', { relationshipId, userId, reason });
+
     if (!mongoose.Types.ObjectId.isValid(relationshipId)) {
+      console.log('Invalid ObjectId format:', relationshipId);
       return res.status(400).json({
         success: false,
         message: 'Invalid relationship ID'
       });
     }
 
+    console.log('Looking for relationship with ID:', relationshipId);
     const relationship = await Relationship.findById(relationshipId);
+    console.log('Found relationship:', relationship ? 'YES' : 'NO');
 
     if (!relationship) {
+      console.log('Relationship not found in database');
+      // Debug: show all relationships for this user
+      const userRelationships = await Relationship.find({
+        $or: [
+          { parentId: userId },
+          { childId: userId }
+        ]
+      });
+      console.log('User has relationships:', userRelationships.length);
+      console.log('User relationship IDs:', userRelationships.map(r => ({ id: r._id.toString(), status: r.status })));
+      
       return res.status(404).json({
         success: false,
         message: 'Relationship not found'
       });
     }
 
-    // ✅ Safe string comparison
     const parentId = relationship.parentId.toString();
     const childId = relationship.childId.toString();
 
+    console.log('Authorization check:', { parentId, childId, userId });
+
     if (parentId !== userId && childId !== userId) {
+      console.log('Unauthorized termination attempt');
       return res.status(403).json({
         success: false,
-        message: 'Not authorized to terminate this relationship'
+        message: 'Not authorized'
       });
     }
 
-    // ✅ Allow terminating even if pending (optional)
     if (relationship.status !== 'active') {
+      console.log('Relationship not active:', relationship.status);
       return res.status(400).json({
         success: false,
         message: 'Only active relationships can be terminated'
       });
     }
 
-    // ✅ Update status instead of relying blindly on method
-    relationship.status = 'terminated';
-    relationship.terminatedAt = new Date();
-    relationship.terminationReason = reason;
+  relationship.status = 'terminated';
+relationship.terminatedAt = new Date();
+relationship.terminationReason = reason;
 
-    await relationship.save();
+await relationship.save();
+console.log('Relationship terminated successfully');
 
-    // ✅ Identify other user
     const otherPartyId = parentId === userId ? childId : parentId;
 
-    // ✅ Send notification safely
     try {
       await notificationService.sendRelationshipNotification({
         userId: otherPartyId,
@@ -515,27 +467,23 @@ router.delete('/:relationshipId/terminate', auth, async (req, res) => {
           reason
         }
       });
-    } catch (notifyError) {
-      console.error('Notification failed:', notifyError);
-      // don't block response
+    } catch (err) {
+      console.error('Notification failed:', err);
     }
 
     return res.json({
       success: true,
-      message: 'Relationship terminated successfully',
-      data: { relationshipId }
+      message: 'Relationship terminated successfully'
     });
 
   } catch (error) {
-    console.error('Error terminating relationship:', error);
-
-    return res.status(500).json({
+    console.error('Terminate error:', error);
+    res.status(500).json({
       success: false,
       message: 'Failed to terminate relationship'
     });
   }
 });
-
 // Update relationship permissions
 router.put('/:relationshipId/permissions', auth, async (req, res) => {
   try {

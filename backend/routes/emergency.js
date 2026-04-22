@@ -189,31 +189,36 @@ router.post(
 
       user.status = 'Emergency';
       await user.save();
-      // console.error('Geocoding FULL error:', err.response?.data || err.message);
+      console.error('Geocoding FULL error:', err.response?.data || err.message);
       const notifications = [];
 
       for (const contact of user.emergencyContacts) {
-        await emergency.notifyMember(contact.memberId._id);
+        // Add null check for memberId
+        if (contact.memberId && contact.memberId._id) {
+          await emergency.notifyMember(contact.memberId._id);
 
-        io.to(contact.memberId._id.toString()).emit('emergency-alert', {
-          emergencyId: emergency._id,
-          individualId: req.user.id,
-          individualName: user.name,
-          location: emergency.location,
-          severity: emergency.severity,
-          triggeredBy: emergency.triggeredBy,
-          message: emergency.message,
-          priority: contact.priority,
-          relation: contact.relation
-        });
+          io.to(contact.memberId._id.toString()).emit('emergency-alert', {
+            emergencyId: emergency._id,
+            individualId: req.user.id,
+            individualName: user.name,
+            location: emergency.location,
+            severity: emergency.severity,
+            triggeredBy: emergency.triggeredBy,
+            message: emergency.message,
+            priority: contact.priority,
+            relation: contact.relation
+          });
 
-        notifications.push({
-          memberId: contact.memberId._id,
-          memberName: contact.memberId.name,
-          priority: contact.priority,
-          relation: contact.relation,
-          notified: true
-        });
+          notifications.push({
+            memberId: contact.memberId._id,
+            memberName: contact.memberId.name,
+            priority: contact.priority,
+            relation: contact.relation,
+            notified: true
+          });
+        } else {
+          console.warn('Emergency contact has null memberId, skipping notification:', contact);
+        }
       }
 
       // Send SOS email to parent with location sharing links

@@ -24,13 +24,17 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [selectedRole, setSelectedRole] = useState<Role>('adult');
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { setRole, setUserName } = useAuth();
+
  const handleLogin = async (e: React.FormEvent) => {
   e.preventDefault();
+  setIsLoading(true);
 
   try {
-    const res = await fetch(`${apiUrl}/auth/login`, {
+    // Use enhanced request manager with retry logic
+    const response = await fetch(`${apiUrl}/auth/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -41,10 +45,15 @@ const Login = () => {
       })
     });
 
-    const data = await res.json();
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
 
     if (!data.success) {
-      alert(data.message);
+      alert(data.message || 'Login failed');
       return;
     }
 
@@ -62,9 +71,23 @@ const Login = () => {
     // Redirect using actual role
     navigate(`/dashboard/${actualRole}`);
 
-  } catch (error) {
-    console.error(error);
-    alert("Login failed");
+  } catch (error: any) {
+    console.error('Login error:', error);
+    
+    // Handle different types of errors
+    if (error.name === 'TypeError' || error.message?.includes('Failed to fetch')) {
+      alert('Network error. Please check your internet connection and try again.');
+    } else if (error.message?.includes('401')) {
+      alert('Invalid email or password. Please try again.');
+    } else if (error.message?.includes('429')) {
+      alert('Too many login attempts. Please wait a moment before trying again.');
+    } else if (error.message?.includes('500')) {
+      alert('Server error. Please try again later.');
+    } else {
+      alert(error.message || 'Login failed. Please try again.');
+    }
+  } finally {
+    setIsLoading(false);
   }
 };
 
@@ -150,8 +173,19 @@ const Login = () => {
                     ))}
                   </div>
 
-                  <button type="submit" className="w-full py-3 gradient-primary text-primary-foreground rounded-xl font-bold shadow-lg shadow-primary/20 hover:shadow-xl transition-all active:scale-95">
-                    Login
+                  <button 
+                    type="submit" 
+                    disabled={isLoading}
+                    className="w-full py-3 gradient-primary text-primary-foreground rounded-xl font-bold shadow-lg shadow-primary/20 hover:shadow-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+                  >
+                    {isLoading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        Logging in...
+                      </span>
+                    ) : (
+                      'Login'
+                    )}
                   </button>
                 </form>
 

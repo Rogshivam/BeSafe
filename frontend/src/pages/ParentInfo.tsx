@@ -77,18 +77,45 @@ const ParentInfo = () => {
 
   const fetchActiveParents = async () => {
     try {
+      console.log('Fetching active parents for user role:', currentUserRole);
       const response = await relationshipAPI.getActiveRelationships();
       if (response.success) {
-        const parents = response.data.activeRelationships.map((rel: any) => ({
-          id: rel.parentId._id,
-          relationshipId: rel._id, // Include relationship ID for termination
-          name: rel.parentId.name,
-          email: rel.parentId.email,
-          phone: rel.parentId.phone,
-          type: 'parent' as const,
-          permissions: rel.permissions,
-          status: 'active' as const
-        }));
+        // console.log('All active relationships from backend:', response.data.activeRelationships.map((rel: any) => ({
+        //   _id: rel._id,
+        //   parentId: rel.parentId?._id,
+        //   childId: rel.childId?._id,
+        //   status: rel.status,
+        //   relationshipType: rel.relationshipType
+        // })));
+        
+        // For children/adults: filter relationships where they are the childId and extract parentId
+        // For parents: filter relationships where they are the parentId and extract childId (if needed)
+        const parents = response.data.activeRelationships
+          .filter((rel: any) => {
+            // For child/adult users, show relationships where they are the child
+            if (currentUserRole === 'child' || currentUserRole === 'adult' || currentUserRole === 'individual') {
+              return rel.childId && rel.childId._id && rel.parentId && rel.parentId._id;
+            }
+            // For parent users, show relationships where they are the parent
+            return rel.parentId && rel.parentId._id && rel.childId && rel.childId._id;
+          })
+          .map((rel: any) => ({
+            id: rel.parentId._id, // Always show the parent as the "parent" in this view
+            relationshipId: rel._id, // Include relationship ID for termination
+            name: rel.parentId.name || 'Unknown Parent',
+            email: rel.parentId.email || '',
+            phone: rel.parentId.phone || '',
+            type: 'parent' as const,
+            permissions: rel.permissions || {},
+            status: 'active' as const
+          }));
+        
+        // console.log('Active parents fetched:', parents.length);
+        // console.log('Parents with relationshipIds:', parents.map((parent: any) => ({
+        //   id: parent.id,
+        //   relationshipId: parent.relationshipId,
+        //   name: parent.name
+        // })));
         setActiveParents(parents);
       }
     } catch (error) {
@@ -127,6 +154,11 @@ const ParentInfo = () => {
 
   const sendParentRequest = async (targetUserId: string) => {
     try {
+      // console.log('sendParentRequest called with targetUserId:', targetUserId);
+      // console.log('Current user role:', currentUserRole);
+      // console.log('Relationship type:', getRelationshipType());
+      // console.log('Current active parents:', activeParents.map(p => ({ id: p.id, name: p.name })));
+      
       // Prevent self-requests
       const currentUser = getCurrentUser() as any;
       if (currentUser && (currentUser.id === targetUserId || currentUser._id === targetUserId)) {
@@ -141,6 +173,7 @@ const ParentInfo = () => {
 
       setLoading(true);
 
+      // console.log('Sending relationship request...');
       await relationshipAPI.sendRelationshipRequest({
         targetUserId,
         relationshipType: getRelationshipType(), // Adult to parent relationship
@@ -200,17 +233,34 @@ const ParentInfo = () => {
   };
 
   const removeParent = async (relationshipId: string) => {
-    if (!confirm('Are you sure you want to remove this parent?')) {
+    if (!confirm('Are you sure you want to remove this parent? This will terminate the relationship.')) {
       return;
     }
 
     try {
+      // Verify relationship exists in current state before terminating
+      const relationshipExists = activeParents.some(parent => parent.relationshipId === relationshipId);
+      if (!relationshipExists) {
+        alert('This relationship no longer exists. Refreshing data...');
+        await fetchActiveParents();
+        return;
+      }
+
       await relationshipAPI.terminateRelationship(relationshipId, 'Removed by child/adult');
-      fetchActiveParents();
+      
+      // Remove from local state immediately
+      setActiveParents(prev => prev.filter(parent => parent.relationshipId !== relationshipId));
+      
+      // Then refresh from server to ensure sync
+      await fetchActiveParents();
+      
       alert('Parent removed successfully!');
     } catch (error) {
       console.error('Failed to remove parent:', error);
       alert('Failed to remove parent. Please try again.');
+      
+      // Refresh data on error to ensure sync
+      await fetchActiveParents();
     }
   };
 const getRelationshipType = () => {

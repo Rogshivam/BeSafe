@@ -79,36 +79,71 @@ relationshipSchema.index({ childId: 1, status: 1 });
 relationshipSchema.index({ status: 1, expiresAt: 1 });
 
 // Static method to find active relationships
-relationshipSchema.statics.findActiveRelationships = function(userId, type = 'parent') {
-  // Find all active relationships where user is involved (either as parent or child)
-  const query = {
-    $or: [
-      { parentId: userId, status: 'active' },
-      { childId: userId, status: 'active' }
-    ]
-  };
+// relationshipSchema.statics.findActiveRelationships = async function(userId, type = 'parent') {
+//   // Find all active relationships where user is involved (either as parent or child)
+//   const query = {
+//     $or: [
+//       { parentId: userId, status: 'active' },
+//       { childId: userId, status: 'active' }
+//     ]
+//   };
   
-  return this.find(query)
-    .populate('parentId', 'name email phone type')
-    .populate('childId', 'name email phone type');
+//   console.log(`Finding active relationships for user ${userId} with query:`, JSON.stringify(query, null, 2));
+  
+//   // Add explicit status filter to exclude terminated relationships
+//   const relationships = await this.find(query)
+//     .populate('parentId', 'name email phone type')
+//     .populate('childId', 'name email phone type');
+    
+//   // Filter out any terminated relationships that might have slipped through
+//   const activeRelationships = relationships.filter(rel => rel.status !== 'terminated');
+  
+//   console.log(`Found ${relationships.length} total relationships, ${activeRelationships.length} active after filtering`);
+//   console.log('Active relationship statuses:', activeRelationships.map(r => ({ id: r._id, status: r.status })));
+  
+//   return activeRelationships;
+// };
+relationshipSchema.statics.findActiveRelationships = function(userId) {
+  return this.find({
+    $and: [
+      {
+        $or: [
+          { parentId: userId },
+          { childId: userId }
+        ]
+      },
+      { status: { $eq: 'active' } }
+    ]
+  })
+  .populate('parentId', 'name email phone type')
+  .populate('childId', 'name email phone type');
 };
-
 // Static method to find pending requests
-relationshipSchema.statics.findPendingRequests = function(userId, type = 'parent') {
-  // Find pending requests where user is the target (not the initiator)
-  const query = {
+// relationshipSchema.statics.findPendingRequests = function(userId, type = 'parent') {
+//   // Find pending requests where user is the target (not the initiator)
+//   const query = {
+//     status: 'pending',
+//     $or: [
+//       { parentId: userId, initiatedBy: { $ne: 'parent' } }, // User is parent and someone else (child/adult) initiated
+//       { childId: userId, initiatedBy: { $nin: ['child', 'adult'] } } // User is child/adult and someone else (parent) initiated
+//     ]
+//   };
+  
+//   return this.find(query)
+//     .populate('parentId', 'name email phone type')
+//     .populate('childId', 'name email phone type');
+// };
+relationshipSchema.statics.findPendingRequests = function(userId) {
+  return this.find({
     status: 'pending',
     $or: [
-      { parentId: userId, initiatedBy: { $ne: 'parent' } }, // User is parent and someone else (child/adult) initiated
-      { childId: userId, initiatedBy: { $ne: 'child', $ne: 'adult' } } // User is child/adult and someone else (parent) initiated
+      { parentId: userId, initiatedBy: { $ne: 'parent' } },
+      { childId: userId, initiatedBy: { $ne: 'child' } }
     ]
-  };
-  
-  return this.find(query)
-    .populate('parentId', 'name email phone type')
-    .populate('childId', 'name email phone type');
+  })
+  .populate('parentId', 'name email phone type')
+  .populate('childId', 'name email phone type');
 };
-
 // Instance method to accept relationship
 relationshipSchema.methods.accept = function(responseMessage = '') {
   this.status = 'active';

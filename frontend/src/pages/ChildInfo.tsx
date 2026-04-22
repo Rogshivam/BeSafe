@@ -63,9 +63,22 @@ const [selectedChild, setSelectedChild] = useState<any | null>(null);
 
   const fetchActiveChildren = async () => {
     try {
+      // console.log('Fetching fresh active relationships...');
       const response = await relationshipAPI.getActiveRelationships();
       if (response.success) {
-        const children = response.data.activeRelationships.map((rel: any) => ({
+        // Filter out any terminated relationships that might still be in response
+        const activeRelationships = response.data.activeRelationships.filter((rel: any) => 
+          rel.status === 'active' && rel.childId && rel.childId._id
+        );
+        
+        // console.log('Active relationships from backend:', activeRelationships.map((rel: any) => ({
+        //   _id: rel._id,
+        //   _idType: typeof rel._id,
+        //   childId: rel.childId._id,
+        //   status: rel.status
+        // })));
+        
+        const children = activeRelationships.map((rel: any) => ({
           id: rel.childId._id,
           relationshipId: rel._id, // Include relationship ID for termination
           name: rel.childId.name,
@@ -75,6 +88,14 @@ const [selectedChild, setSelectedChild] = useState<any | null>(null);
           permissions: rel.permissions,
           status: 'active' as const
         }));
+        
+        // console.log('Active children fetched:', children.length);
+        // console.log('Children with relationshipIds:', children.map((child: any) => ({
+        //   id: child.id,
+        //   relationshipId: child.relationshipId,
+        //   relationshipIdType: typeof child.relationshipId,
+        //   name: child.name
+        // })));
         setActiveChildren(children);
       }
     } catch (error) {
@@ -206,17 +227,59 @@ const sendChildRequest = async (targetUserId: string, targetUserType: string) =>
   };
 
   const removeChild = async (relationshipId: string) => {
+    // console.log('removeChild called with relationshipId:', relationshipId);
+    // console.log('Current active children:', activeChildren);
+    
     if (!confirm('Are you sure you want to remove this child? This will terminate the relationship.')) {
       return;
     }
 
     try {
+      // Verify relationship exists in current state before terminating
+      const relationshipExists = activeChildren.some(child => child.relationshipId === relationshipId);
+      // console.log('Relationship exists in state:', relationshipExists);
+      
+      if (!relationshipExists) {
+        alert('This relationship no longer exists. Refreshing data...');
+        await fetchActiveChildren();
+        return;
+      }
+
+      // Refresh data to ensure we have the latest relationship information
+      // console.log('Refreshing data before termination to ensure consistency...');
+      await fetchActiveChildren();
+      
+      // Check again after refresh
+      const updatedRelationshipExists = activeChildren.some(child => child.relationshipId === relationshipId);
+      if (!updatedRelationshipExists) {
+        alert('This relationship no longer exists after refresh. It may have been terminated already.');
+        return;
+      }
+
+      // console.log('Calling terminateRelationship with:', relationshipId);
       await relationshipAPI.terminateRelationship(relationshipId, 'Removed by parent');
-      fetchActiveChildren();
+      
+      // Remove from local state immediately
+      setActiveChildren(prev => prev.filter(child => child.relationshipId !== relationshipId));
+      
+      // Then refresh from server to ensure sync
+      await fetchActiveChildren();
+      
       alert('Child removed successfully!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to remove child:', error);
+      
+      if (error.response?.status === 404) {
+        // console.log('404 error - relationship not found, refreshing data...');
+        alert('Relationship not found. It may have been terminated already. Refreshing data...');
+        await fetchActiveChildren();
+        return;
+      }
+      
       alert('Failed to remove child. Please try again.');
+      
+      // Refresh data on error to ensure sync
+      await fetchActiveChildren();
     }
   };
 
@@ -297,7 +360,7 @@ const sendChildRequest = async (targetUserId: string, targetUserType: string) =>
                         <p className="text-sm text-muted-foreground">{child.type === 'child' ? 'Child' : 'Adult'}</p>
                       </div>
                       <button
-                        onClick={() => removeChild(child.id)}
+                        onClick={() => removeChild(child.relationshipId)}
                         className="text-destructive hover:bg-destructive/10 p-1 rounded-lg transition-colors"
                       >
                         <X className="w-4 h-4" />

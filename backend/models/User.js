@@ -148,8 +148,7 @@ resetPasswordExpire: {
   timestamps: true
 });
 
-// Index for efficient queries
-userSchema.index({ email: 1 });
+// Index for efficient queries (email is already indexed as unique)
 userSchema.index({ phone: 1 });
 userSchema.index({ userType: 1 });
 userSchema.index({ status: 1 });
@@ -185,24 +184,67 @@ userSchema.methods.addEmergencyContact = async function(memberId, relation, prio
   await this.save();
 };
 
-// Method to update location
-userSchema.methods.updateLocation = async function(latitude, longitude, accuracy = 0) {
-  const newLocation = {
-    latitude,
-    longitude,
-    timestamp: new Date(),
-    accuracy
+// Method to update user location
+userSchema.methods.updateLocation = async function(latitude, longitude, accuracy, address) {
+  const currentLocation = {
+    latitude: parseFloat(latitude),
+    longitude: parseFloat(longitude),
+    accuracy: accuracy ? parseFloat(accuracy) : undefined,
+    address: address || 'Unknown Location',
+    timestamp: new Date()
   };
-  
-  this.currentLocation = newLocation;
-  this.locationHistory.push(newLocation);
-  
-  // Keep only last 50 locations in history
-  if (this.locationHistory.length > 50) {
-    this.locationHistory = this.locationHistory.slice(-50);
+
+  // Add to location history
+  const locationHistoryEntry = {
+    latitude: parseFloat(latitude),
+    longitude: parseFloat(longitude),
+    accuracy: accuracy ? parseFloat(accuracy) : undefined,
+    address: address || 'Unknown Location',
+    timestamp: new Date()
+  };
+
+  try {
+    // Use findOneAndUpdate to avoid version conflicts
+    const updatedUser = await this.constructor.findOneAndUpdate(
+      { _id: this._id },
+      { 
+        $set: { currentLocation },
+        $push: { locationHistory: locationHistoryEntry },
+        $inc: { __v: 1 }
+      },
+      { 
+        new: true,
+        upsert: false,
+        // Use lean to avoid version conflicts
+        lean: false
+      }
+    );
+
+    // Trim location history to keep only last 50 entries
+    if (updatedUser.locationHistory.length > 50) {
+      await this.constructor.updateOne(
+        { _id: this._id },
+        { 
+          $set: { 
+            locationHistory: updatedUser.locationHistory.slice(-50)
+          }
+        }
+      );
+    }
+
+    return updatedUser;
+  } catch (error) {
+    console.error('Location update error:', error);
+    // Fallback to regular save if findOneAndUpdate fails
+    this.currentLocation = currentLocation;
+    this.locationHistory.push(locationHistoryEntry);
+    
+    if (this.locationHistory.length > 50) {
+      this.locationHistory = this.locationHistory.slice(-50);
+    }
+    
+    return await this.save();
   }
-  
-  await this.save();
 };
 
 // Method to get high priority contacts

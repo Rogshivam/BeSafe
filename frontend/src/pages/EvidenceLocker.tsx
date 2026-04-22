@@ -59,15 +59,41 @@ const EvidenceLocker = () => {
           }
         }
 
-        // Fetch evidence based on selected child or own evidence
+        // Fetch evidence based on selected child or own evidence with retry logic
         let evidenceRes;
-        if (role === 'parent' && selectedChild) {
-          evidenceRes = await evidenceAPI.getChildEvidence(selectedChild);
-        } else {
-          evidenceRes = await evidenceAPI.getAll();
+        let retryCount = 0;
+        const maxRetries = 3;
+        
+        while (retryCount < maxRetries) {
+          try {
+            if (role === 'parent' && selectedChild) {
+              evidenceRes = await evidenceAPI.getChildEvidence(selectedChild);
+            } else {
+              evidenceRes = await evidenceAPI.getAll();
+            }
+            
+            setEvidence(evidenceRes.data || []);
+            break; // Success, exit retry loop
+          } catch (err: any) {
+            console.error(`Error fetching evidence (attempt ${retryCount + 1}):`, err);
+            
+            // If it's a 429 error, wait and retry
+            if (err.message?.includes('Too many requests')) {
+              retryCount++;
+              const waitTime = Math.pow(2, retryCount) * 1000; // Exponential backoff: 1s, 2s, 4s
+              
+              if (retryCount < maxRetries) {
+                // console.log(`Retrying in ${waitTime}ms...`);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+                continue;
+              }
+            }
+            
+            // For other errors, don't retry
+            setEvidence([]);
+            break;
+          }
         }
-
-        setEvidence(evidenceRes.data || []);
       } catch (err) {
         console.error('Error fetching evidence:', err);
       } finally {

@@ -32,6 +32,10 @@ router.post('/update',
 
       // Update address and store last location
       if (address) {
+        // Ensure currentLocation exists before setting properties
+        if (!user.currentLocation) {
+          user.currentLocation = {};
+        }
         user.currentLocation.address = address;
         user.locationSharingExpiresAt = new Date(Date.now() + 15 * 60 * 1000)
         
@@ -61,13 +65,16 @@ router.post('/update',
 
         for (const emergency of activeEmergencies) {
           for (const notification of emergency.notifiedMembers) {
-            io.to(notification.memberId._id.toString()).emit('location-update', {
-              emergencyId: emergency._id,
-              userId: req.user.id,
-              userName: user.name,
-              location: user.currentLocation,
-              timestamp: new Date()
-            });
+            // Add null check for memberId
+            if (notification.memberId && notification.memberId._id) {
+              io.to(notification.memberId._id.toString()).emit('location-update', {
+                emergencyId: emergency._id,
+                userId: req.user.id,
+                userName: user.name,
+                location: user.currentLocation,
+                timestamp: new Date()
+              });
+            }
           }
         }
       }
@@ -100,15 +107,19 @@ router.post('/update',
           await relationship.save();
 
           // Broadcast to parent
-          io.to(relationship.parentId._id.toString()).emit('location-update', {
-            userId: req.user.id,
-            userName: user.name,
-            location: user.currentLocation,
-            timestamp: new Date()
-          });
+          if (relationship.parentId && relationship.parentId._id) {
+            io.to(relationship.parentId._id.toString()).emit('location-update', {
+              userId: req.user.id,
+              userName: user.name,
+              location: user.currentLocation,
+              timestamp: new Date()
+            });
+          }
         }
         // If current user is the parent, broadcast to child (for two-way communication)
-        else if (relationship.parentId._id.toString() === req.user.id.toString()) {
+        else if (relationship.parentId && relationship.parentId._id && 
+                 relationship.parentId._id.toString() === req.user.id.toString() &&
+                 relationship.childId && relationship.childId._id) {
           io.to(relationship.childId._id.toString()).emit('location-update', {
             userId: req.user.id,
             userName: user.name,

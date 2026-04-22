@@ -48,6 +48,17 @@ const AdultDashboard = () => {
       setRiskLevel(78);
     });
 
+    // Listen for emergency resolution
+    socketService.onEmergencyResolved((data) => {
+      setActiveEmergencies(prev => {
+        const updated = prev.filter(emer => emer._id !== data.emergencyId);
+        // Recalculate risk level
+        const risk = updated.length > 0 ? 78 : 15;
+        setRiskLevel(risk);
+        return updated;
+      });
+    });
+
     return () => {
       socketService.removeAllListeners();
     };
@@ -67,7 +78,7 @@ const AdultDashboard = () => {
           const location = {
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
-            address: 'Current Location',
+            address: 'Location',
             accuracy: pos.coords.accuracy
           };
 
@@ -80,8 +91,8 @@ const AdultDashboard = () => {
               severity: 'Critical',
               message: 'SOS Emergency triggered by adult',
               title: 'SOS Emergency',
-              description: 'Emergency triggered by adult user',
-              address: 'Current Location'
+              description: 'Emergency triggered by user',
+              address: 'Location'
             });
 
             if (response.success) {
