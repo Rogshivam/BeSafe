@@ -189,7 +189,6 @@ router.post(
 
       user.status = 'Emergency';
       await user.save();
-      console.error('Geocoding FULL error:', err.response?.data || err.message);
       const notifications = [];
 
       for (const contact of user.emergencyContacts) {
