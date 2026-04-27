@@ -16,6 +16,7 @@ const AdultDashboard = () => {
   const [activeEmergencies, setActiveEmergencies] = useState<any[]>([]);
   const [riskLevel, setRiskLevel] = useState(0);
   const [audioMonitoring, setAudioMonitoring] = useState(false);
+  const [incidents, setIncidents] = useState<any[]>([]);
 
   useEffect(() => {
     // Get current user and connect to socket
@@ -31,30 +32,55 @@ const AdultDashboard = () => {
         const response = await emergencyAPI.getActiveEmergencies();
         if (response.success) {
           setActiveEmergencies(response.data.emergencies);
-          // Calculate risk level based on active emergencies
-          const risk = response.data.emergencies.length > 0 ? 78 : 15;
-          setRiskLevel(risk);
         }
       } catch (error) {
         console.error('Failed to fetch active emergencies:', error);
       }
     };
 
+    // Fetch incidents and calculate risk based on unresolved incidents
+    const fetchIncidentsAndCalculateRisk = async () => {
+      try {
+        const response = await emergencyAPI.getEmergencyHistory();
+        if (response.success) {
+          const allIncidents = response.data.emergencies || [];
+          setIncidents(allIncidents);
+          
+          // Calculate risk based on percentage of unresolved incidents
+          const unresolvedIncidents = allIncidents.filter((inc: any) => inc.status !== 'Resolved');
+          const totalIncidents = allIncidents.length;
+          
+          if (totalIncidents === 0) {
+            setRiskLevel(15); // Default low risk if no incidents
+          } else {
+            const unresolvedPercentage = (unresolvedIncidents.length / totalIncidents) * 100;
+            // Map percentage to risk level (0-100)
+            // Higher percentage of unresolved incidents = higher risk
+            setRiskLevel(Math.round(unresolvedPercentage));
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch incidents:', error);
+        setRiskLevel(15); // Default low risk on error
+      }
+    };
+
     fetchActiveEmergencies();
+    fetchIncidentsAndCalculateRisk();
 
     // Listen for emergency alerts
     socketService.onEmergencyAlert((data) => {
       setActiveEmergencies(prev => [...prev, data]);
-      setRiskLevel(78);
+      // Recalculate risk based on incidents
+      fetchIncidentsAndCalculateRisk();
     });
 
     // Listen for emergency resolution
     socketService.onEmergencyResolved((data) => {
       setActiveEmergencies(prev => {
         const updated = prev.filter(emer => emer._id !== data.emergencyId);
-        // Recalculate risk level
-        const risk = updated.length > 0 ? 78 : 15;
-        setRiskLevel(risk);
+        // Recalculate risk based on incidents
+        fetchIncidentsAndCalculateRisk();
         return updated;
       });
     });

@@ -8,10 +8,12 @@ import {
   Search,
   Trash2,
   Pencil,
+  MessageCircle,
 } from "lucide-react";
 import { BottomNav } from "@/components/BottomNav";
 import { motion } from "framer-motion";
 import { DashboardSidebar } from "./DashboardSidebar";
+import { communicationAPI } from "@/services/api";
 
 interface SearchUser {
   _id: string;
@@ -73,6 +75,13 @@ export default function EmergencyContactsPage() {
     relation: "Friend",
     priority: "High",
   });
+
+  // Chat state
+  const [showChat, setShowChat] = useState(false);
+  const [selectedChatContact, setSelectedChatContact] = useState<EmergencyContact | null>(null);
+  const [chatMessage, setChatMessage] = useState("");
+  const [chatHistory, setChatHistory] = useState<any[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
 
   const authHeaders = useMemo(
     () => ({
@@ -284,6 +293,59 @@ export default function EmergencyContactsPage() {
     });
   };
 
+  const openChat = async (contact: EmergencyContact) => {
+    setSelectedChatContact(contact);
+    setShowChat(true);
+    setChatHistory([]);
+    
+    // Load conversation from backend
+    try {
+      setLoadingMessages(true);
+      const response = await communicationAPI.getConversation(contact.memberId._id);
+      if (response.success) {
+        setChatHistory(response.data.messages);
+      }
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
+  const closeChat = () => {
+    setShowChat(false);
+    setSelectedChatContact(null);
+    setChatMessage("");
+    setChatHistory([]);
+  };
+
+  const sendMessage = async () => {
+    if (!chatMessage.trim() || !selectedChatContact) return;
+
+    try {
+      const response = await communicationAPI.sendMessage({
+        receiverId: selectedChatContact.memberId._id,
+        messageType: 'Text',
+        content: chatMessage,
+        priority: 'Normal'
+      });
+
+      if (response.success) {
+        // Add the sent message to local state
+        const newMessage = {
+          ...response.data.message,
+          sent: true,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        setChatHistory(prev => [...prev, newMessage]);
+        setChatMessage("");
+      }
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      alert('Failed to send message. Please try again.');
+    }
+  };
+
   return (
     <div className="flex min-h-screen bg-secondary/30">
       <DashboardSidebar />
@@ -387,6 +449,14 @@ export default function EmergencyContactsPage() {
                       title="Call"
                     >
                       <Phone className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      onClick={() => openChat(contact)}
+                      className="w-10 h-10 rounded-full bg-accent/10 text-accent flex items-center justify-center hover:bg-accent/20 transition-colors"
+                      title="Chat"
+                    >
+                      <MessageCircle className="w-4 h-4" />
                     </button>
 
                     <button
@@ -591,6 +661,99 @@ export default function EmergencyContactsPage() {
                       className="w-full py-3 gradient-primary text-primary-foreground rounded-xl font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {adding ? "Adding..." : "Add Contact"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+
+        {showChat && selectedChatContact && (
+          <>
+            <div
+              className="fixed inset-0 bg-foreground/30 z-50 "
+              onClick={closeChat}
+            />
+
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              className="fixed bottom-0 left-0 right-0 z-50 bg-card rounded-t-3xl shadow-2xl max-h-[90vh] flex flex-col pb-20"
+            >
+              <div className="p-5 space-y-4 overflow-y-auto flex-1">
+                <div className="max-w-lg mx-auto w-full flex flex-col h-full space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center text-primary-foreground font-bold text-sm">
+                        {selectedChatContact.memberId?.name?.[0] || "?"}
+                      </div>
+                      <div>
+                        <h2 className="font-bold text-lg text-foreground">{selectedChatContact.memberId?.name}</h2>
+                        <p className="text-xs text-muted-foreground">{selectedChatContact.relation}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={closeChat}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Chat Messages */}
+                  <div className="flex-1 overflow-y-auto space-y-3 min-h-[300px] max-h-[400px] p-3 bg-secondary/30 rounded-xl">
+                    {loadingMessages ? (
+                      <div className="text-center text-muted-foreground text-sm py-8">
+                        Loading messages...
+                      </div>
+                    ) : chatHistory.length === 0 ? (
+                      <div className="text-center text-muted-foreground text-sm py-8">
+                        No messages yet. Start the conversation!
+                      </div>
+                    ) : (
+                      chatHistory.map((msg, i) => {
+                        const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+                        const isSent = msg.senderId._id === currentUser.id || msg.senderId === currentUser.id;
+                        
+                        return (
+                          <div
+                            key={msg._id || i}
+                            className={`flex ${isSent ? 'justify-end' : 'justify-start'}`}
+                          >
+                            <div
+                              className={`max-w-[80%] px-4 py-2 rounded-2xl ${
+                                isSent
+                                  ? 'bg-primary text-primary-foreground'
+                                  : 'bg-muted text-foreground'
+                              }`}
+                            >
+                              <p className="text-sm">{msg.content}</p>
+                              <p className="text-[10px] opacity-70 mt-1">
+                                {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Message Input */}
+                  <div className="flex gap-2 pt-2">
+                    <input
+                      value={chatMessage}
+                      onChange={(e) => setChatMessage(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                      placeholder="Type a message..."
+                      className="flex-1 px-4 py-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                    <button
+                      onClick={sendMessage}
+                      disabled={!chatMessage.trim()}
+                      className="px-4 py-3 rounded-xl gradient-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Send className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
