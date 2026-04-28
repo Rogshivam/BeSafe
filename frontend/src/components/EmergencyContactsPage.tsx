@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import {
   Phone,
   UserPlus,
@@ -9,6 +9,9 @@ import {
   Trash2,
   Pencil,
   MessageCircle,
+  Check,
+  CheckCheck,
+  MoreVertical,
 } from "lucide-react";
 import { BottomNav } from "@/components/BottomNav";
 import { motion } from "framer-motion";
@@ -82,6 +85,8 @@ export default function EmergencyContactsPage() {
   const [chatMessage, setChatMessage] = useState("");
   const [chatHistory, setChatHistory] = useState<any[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const authHeaders = useMemo(
     () => ({
@@ -118,7 +123,14 @@ export default function EmergencyContactsPage() {
 
   useEffect(() => {
     fetchContacts();
-  }, []);
+    
+    // Cleanup interval on unmount
+    return () => {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+    };
+  }, [refreshInterval]);
 
   const searchUsers = async () => {
     if (!searchQuery.trim()) {
@@ -299,20 +311,50 @@ export default function EmergencyContactsPage() {
     setChatHistory([]);
     
     // Load conversation from backend
+    await loadConversation(contact.memberId._id);
+    
+    // Start auto-refresh for new messages
+    if (refreshInterval) clearInterval(refreshInterval);
+    const interval = setInterval(() => {
+      if (selectedChatContact) {
+        loadConversation(selectedChatContact.memberId._id);
+      }
+    }, 3000); // Refresh every 3 seconds
+    setRefreshInterval(interval);
+  };
+
+  const loadConversation = async (userId: string) => {
     try {
       setLoadingMessages(true);
-      const response = await communicationAPI.getConversation(contact.memberId._id);
+      const response = await communicationAPI.getConversation(userId);
+      console.log('Conversation response:', response);
       if (response.success) {
+        console.log('Messages loaded:', response.data.messages);
         setChatHistory(response.data.messages);
+        // Scroll to bottom after messages load
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+      } else {
+        console.error('Failed to load conversation:', response.message);
+        setChatHistory([]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load conversation:', error);
+      if (error.response?.status === 403) {
+        console.error('Access denied - users may not be emergency contacts');
+      }
+      setChatHistory([]);
     } finally {
       setLoadingMessages(false);
     }
   };
 
   const closeChat = () => {
+    if (refreshInterval) {
+      clearInterval(refreshInterval);
+      setRefreshInterval(null);
+    }
     setShowChat(false);
     setSelectedChatContact(null);
     setChatMessage("");
@@ -322,26 +364,26 @@ export default function EmergencyContactsPage() {
   const sendMessage = async () => {
     if (!chatMessage.trim() || !selectedChatContact) return;
 
+    const tempMessage = chatMessage;
+    setChatMessage("");
+
     try {
       const response = await communicationAPI.sendMessage({
         receiverId: selectedChatContact.memberId._id,
         messageType: 'Text',
-        content: chatMessage,
+        content: tempMessage,
         priority: 'Normal'
       });
 
+      console.log('Send message response:', response);
+
       if (response.success) {
-        // Add the sent message to local state
-        const newMessage = {
-          ...response.data.message,
-          sent: true,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-        setChatHistory(prev => [...prev, newMessage]);
-        setChatMessage("");
+        // Refresh conversation to get all messages including the new one
+        await loadConversation(selectedChatContact.memberId._id);
       }
     } catch (error) {
       console.error('Failed to send message:', error);
+      setChatMessage(tempMessage); // Restore message on error
       alert('Failed to send message. Please try again.');
     }
   };
@@ -702,7 +744,7 @@ export default function EmergencyContactsPage() {
                   </div>
 
                   {/* Chat Messages */}
-                  <div className="flex-1 overflow-y-auto space-y-3 min-h-[300px] max-h-[400px] p-3 bg-secondary/30 rounded-xl">
+                  <div className="flex-1 overflow-y-auto space-y-2 min-h-[300px] max-h-[400px] p-3 bg-[#efeae2] rounded-xl">
                     {loadingMessages ? (
                       <div className="text-center text-muted-foreground text-sm py-8">
                         Loading messages...
@@ -712,48 +754,67 @@ export default function EmergencyContactsPage() {
                         No messages yet. Start the conversation!
                       </div>
                     ) : (
-                      chatHistory.map((msg, i) => {
-                        const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-                        const isSent = msg.senderId._id === currentUser.id || msg.senderId === currentUser.id;
-                        
-                        return (
-                          <div
-                            key={msg._id || i}
-                            className={`flex ${isSent ? 'justify-end' : 'justify-start'}`}
-                          >
+                      <>
+                        {chatHistory.map((msg, i) => {
+                          const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+                          const isSent = msg.senderId._id === currentUser.id || msg.senderId === currentUser.id;
+                          const messageTime = new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                          
+                          return (
                             <div
-                              className={`max-w-[80%] px-4 py-2 rounded-2xl ${
-                                isSent
-                                  ? 'bg-primary text-primary-foreground'
-                                  : 'bg-muted text-foreground'
-                              }`}
+                              key={msg._id || i}
+                              className={`flex ${isSent ? 'justify-end' : 'justify-start'}`}
                             >
-                              <p className="text-sm">{msg.content}</p>
-                              <p className="text-[10px] opacity-70 mt-1">
-                                {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </p>
+                              <div
+                                className={`max-w-[75%] px-3 py-2 rounded-lg shadow-sm ${
+                                  isSent
+                                    ? 'bg-[#dcf8c6] text-foreground'
+                                    : 'bg-white text-foreground'
+                                }`}
+                              >
+                                <p className="text-sm break-words">{msg.content}</p>
+                                <div className="flex items-center justify-end gap-1 mt-1">
+                                  <span className="text-[10px] text-muted-foreground">
+                                    {messageTime}
+                                  </span>
+                                  {isSent && (
+                                    <span className="text-[10px]">
+                                      {msg.isRead ? (
+                                        <CheckCheck className="w-3 h-3 text-blue-500" />
+                                      ) : msg.delivered ? (
+                                        <CheckCheck className="w-3 h-3 text-muted-foreground" />
+                                      ) : (
+                                        <Check className="w-3 h-3 text-muted-foreground" />
+                                      )}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })
+                          );
+                        })}
+                        <div ref={messagesEndRef} />
+                      </>
                     )}
                   </div>
 
                   {/* Message Input */}
-                  <div className="flex gap-2 pt-2">
-                    <input
-                      value={chatMessage}
-                      onChange={(e) => setChatMessage(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                      placeholder="Type a message..."
-                      className="flex-1 px-4 py-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    />
+                  <div className="flex gap-2 pt-2 items-end">
+                    <div className="flex-1 relative">
+                      <input
+                        value={chatMessage}
+                        onChange={(e) => setChatMessage(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                        placeholder="Type a message..."
+                        className="w-full px-4 py-3 rounded-full border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 pr-12"
+                      />
+                    </div>
                     <button
                       onClick={sendMessage}
                       disabled={!chatMessage.trim()}
-                      className="px-4 py-3 rounded-xl gradient-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-12 h-12 rounded-full bg-[#00a884] text-white hover:bg-[#008f6f] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
                     >
-                      <Send className="w-4 h-4" />
+                      <Send className="w-5 h-5" />
                     </button>
                   </div>
                 </div>
