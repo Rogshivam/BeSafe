@@ -814,6 +814,38 @@ export const communicationAPI = {
   },
 };
 
+export const chatRequestAPI = {
+  sendRequest: async (receiverId: string, message?: string) => {
+    const response = await api.post('/chat-requests/send', { receiverId, message });
+    return response.data;
+  },
+
+  acceptRequest: async (requestId: string) => {
+    const response = await api.put(`/chat-requests/${requestId}/accept`);
+    return response.data;
+  },
+
+  declineRequest: async (requestId: string) => {
+    const response = await api.put(`/chat-requests/${requestId}/decline`);
+    return response.data;
+  },
+
+  getPendingRequests: async () => {
+    const response = await api.get('/chat-requests/pending');
+    return response.data;
+  },
+
+  canChat: async (userId: string) => {
+    const response = await api.get(`/chat-requests/can-chat/${userId}`);
+    return response.data;
+  },
+
+  getRequestStatus: async (userId: string) => {
+    const response = await api.get(`/chat-requests/status/${userId}`);
+    return response.data;
+  },
+};
+
 // Utility functions
 export const setAuthToken = (token: string) => {
   localStorage.setItem('token', token);

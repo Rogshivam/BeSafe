@@ -13,6 +13,7 @@ import locationRoutes from './routes/location.js';
 import communicationRoutes from './routes/communication.js';
 import relationshipRoutes from './routes/relationships.js';
 import evidenceRoutes from './routes/evidenceRoutes.js';
+import chatRequestRoutes from './routes/chatRequests.js';
 dotenv.config();
 
 const app = express();
@@ -123,6 +124,7 @@ app.use('/api/location', locationLimiter, locationRoutes);
 app.use('/api/communication', communicationRoutes);
 app.use('/api/relationships', relationshipRoutes);
 app.use('/api/evidence', uploadLimiter, evidenceRoutes);
+app.use('/api/chat-requests', chatRequestRoutes);
 // Comprehensive health check endpoint
 app.get('/api/health', async (req, res) => {
   try {
