@@ -260,9 +260,15 @@ class NotificationService {
       };
 
       if (this.emailTransporter) {
-        const info = await this.emailTransporter.sendMail(mailOptions);
-        // console.log(`SOS emergency email sent to ${parentEmail}:`, info.messageId);
-        return true;
+        // Send email without blocking emergency response
+        this.emailTransporter.sendMail(mailOptions)
+          .then(info => {
+            console.log(`SOS emergency email sent to ${parentEmail}:`, info.messageId);
+          })
+          .catch(error => {
+            console.error('Error sending SOS email:', error);
+          });
+        return true; // Return immediately, don't wait for email
       }
 
       return false;
