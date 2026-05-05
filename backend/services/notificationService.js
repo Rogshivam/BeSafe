@@ -97,6 +97,15 @@ class NotificationService {
 
       // Send email notification
       if (user.email && user.preferences?.emailNotifications) {
+        console.log('📧 Sending relationship notification email to:', user.email);
+        console.log('📧 Email transporter available:', !!this.emailTransporter);
+        console.log('📧 EMAIL_USER configured:', process.env.EMAIL_USER ? 'SET' : 'NOT SET');
+        
+        if (!this.emailTransporter) {
+          console.error('❌ Email transporter not initialized - skipping email send');
+          return false;
+        }
+        
         const html = `
           <!DOCTYPE html>
           <html>
@@ -123,7 +132,14 @@ class NotificationService {
         };
 
         if (this.emailTransporter) {
-          await this.emailTransporter.sendMail(mailOptions);
+          // Send email asynchronously without blocking
+          this.emailTransporter.sendMail(mailOptions)
+            .then(info => {
+              console.log(`Relationship notification email sent to ${user.email}:`, info.messageId);
+            })
+            .catch(error => {
+              console.error('Error sending relationship notification email:', error);
+            });
         }
       }
 
