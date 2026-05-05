@@ -65,7 +65,7 @@ const getAddressFromCoords = async (lat, lng) => {
           'Accept-Language': 'en-US,en;q=0.9',
           'Accept': 'application/json'
         },
-        timeout: 15000
+        timeout: 5000 // Reduced timeout to 5 seconds
       }
     );
 
@@ -78,7 +78,8 @@ const getAddressFromCoords = async (lat, lng) => {
     });
 
     // Return coordinates as fallback if API fails
-    return `${parseFloat(lat).toFixed(6)}, ${parseFloat(lng).toFixed(6)}`;
+    const fallback = `${parseFloat(lat).toFixed(6)}, ${parseFloat(lng).toFixed(6)}`;
+    return fallback;
   }
 };
 
@@ -125,9 +126,22 @@ router.post(
       }
       let resolvedAddress = req.body.address;
 
-      // If frontend sends "Unknown", fix it here
+      // If frontend sends "Unknown", fix it here but don't block the emergency
       if (!resolvedAddress || resolvedAddress === 'Unknown Location') {
-        resolvedAddress = await getAddressFromCoords(latitudeNum, longitudeNum);
+        // Don't wait for geocoding - use coordinates as fallback
+        resolvedAddress = `${latitudeNum.toFixed(6)}, ${longitudeNum.toFixed(6)}`;
+        
+        // Trigger geocoding in background without blocking emergency response
+        getAddressFromCoords(latitudeNum, longitudeNum).then(address => {
+          if (address && address !== 'Unknown Location') {
+            // Update emergency record with proper address asynchronously
+            Emergency.findByIdAndUpdate(emergency._id, { 
+              'location.address': address 
+            }).catch(err => console.log('Failed to update address:', err));
+          }
+        }).catch(err => {
+          console.log('Background geocoding failed:', err.message);
+        });
       }
       const emergency = new Emergency({
         individualId: req.user.id,
