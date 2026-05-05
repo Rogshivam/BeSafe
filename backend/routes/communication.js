@@ -7,42 +7,14 @@ import User from '../models/User.js';
 import Emergency from '../models/Emergency.js';
 import { auth } from '../middleware/auth.js';
 import { validateMessage, handleValidationErrors } from '../middleware/validation.js';
+import { uploadMessageMedia, deleteCloudinaryFile, extractPublicId, getResourceType } from '../utils/fileUpload.js';
 
 const router = express.Router();
-
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = 'uploads/messages';
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
-const upload = multer({
-  storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('audio/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image and audio files are allowed'));
-    }
-  }
-});
 
 // Send message
 router.post('/send', 
   auth,
-  upload.single('media'),
+  uploadMessageMedia.single('media'),
   validateMessage,
   handleValidationErrors,
   async (req, res) => {
@@ -103,7 +75,10 @@ router.post('/send',
         emergencyId: emergencyId || undefined,
         messageType,
         content: messageType === 'Text' || messageType === 'System' ? content : '',
-        mediaUrl: (messageType === 'Image' || messageType === 'Audio') ? req.file?.path : '',
+        // mediaUrl: (messageType === 'Image' || messageType === 'Audio') ? req.file?.path : '',
+        mediaUrl: (messageType === 'Image' || messageType === 'Audio')
+  ? req.file?.path || req.file?.secure_url || ''
+  : '',
         priority,
         location: messageType === 'Location' ? {
           latitude: parseFloat(req.body.latitude),
@@ -159,6 +134,19 @@ router.post('/send',
       });
     } catch (error) {
       console.error('Send message error:', error);
+      
+      // Delete uploaded file from Cloudinary if database save failed
+      if (req.file && (req.file.public_id || req.file.filename)) {
+        try {
+          const publicId = req.file.public_id || req.file.filename;
+          const resourceType = getResourceType(req.file.path || req.file.secure_url);
+          await deleteCloudinaryFile(publicId, resourceType);
+          console.log('Deleted orphaned Cloudinary file:', publicId);
+        } catch (deleteError) {
+          console.error('Failed to delete orphaned Cloudinary file:', deleteError);
+        }
+      }
+      
       res.status(500).json({
         success: false,
         message: 'Server error sending message'

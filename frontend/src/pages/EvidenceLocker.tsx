@@ -104,16 +104,25 @@ const EvidenceLocker = () => {
     fetchData();
   }, [role, selectedChild]);
 
-  const handleView = (fileUrl: string) => {
-    window.open(`${BASE_URL}${fileUrl}`, '_blank');
-  };
   const BASE_URL = import.meta.env.VITE_API_URL.replace('/api', '');
+  
+  const handleView = (fileUrl: string) => {
+    // If it's already a full URL (Cloudinary), use it directly
+    // Otherwise, prepend the base URL for local files
+    const fullUrl = fileUrl?.startsWith('http') ? fileUrl : `${BASE_URL}${fileUrl}`;
+    console.log('Opening file URL:', fullUrl);
+    console.log('Original fileUrl:', fileUrl);
+    window.open(fullUrl, '_blank');
+  };
 
 
-  const handleDownload = (fileUrl: string) => {
+  const handleDownload = (fileUrl: string, title?: string) => {
     const link = document.createElement('a');
-    link.href = `${BASE_URL}${fileUrl}`;
-    link.download = 'evidence';
+    // If it's already a full URL (Cloudinary), use it directly
+    // Otherwise, prepend the base URL for local files
+    link.href = fileUrl?.startsWith('http') ? fileUrl : `${BASE_URL}${fileUrl}`;
+    link.download = title || 'evidence';
+    link.target = '_blank';
     link.click();
   };
 
@@ -246,7 +255,7 @@ const EvidenceLocker = () => {
                       </button>
 
                       <button
-                        onClick={() => handleDownload(item.fileUrl)}
+                        onClick={() => handleDownload(item.fileUrl, item.title)}
                         className="flex-1 flex items-center justify-center gap-1 py-2 gradient-primary text-primary-foreground rounded-xl text-xs font-medium"
                       >
                         <Download className="w-3 h-3" /> Download

@@ -206,12 +206,14 @@ const PORT = process.env.PORT || 5000;
 // Connect to MongoDB and start server
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
-    server.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-      console.log('Connected to MongoDB');
-    });
+    console.log('Connected to MongoDB');
   })
   .catch((error) => {
     console.error('Database connection error:', error);
-    process.exit(1);
+    console.warn('Server continuing without MongoDB - some features may not work');
+    // Don't exit, continue running server for testing
   });
+
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});

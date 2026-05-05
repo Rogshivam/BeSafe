@@ -125,9 +125,11 @@ export default function IncidentReport() {
       setForm({ title: '', description: '', location: '' });
       setSelectedFile(null);
       setShowForm(false);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to submit report');
+    } catch (err: any) {
+      console.error('Submit error:', err);
+      console.error('Error response:', err.response?.data);
+      console.error('Error status:', err.response?.status);
+      alert(`Failed to submit report: ${err.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }

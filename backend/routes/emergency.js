@@ -10,6 +10,7 @@ import { auth, authorize } from '../middleware/auth.js';
 import { validateEmergency, handleValidationErrors } from '../middleware/validation.js';
 import notificationService from '../services/notificationService.js';
 import Relationship from '../models/Relationship.js';
+import { uploadEmergencyMedia, deleteCloudinaryFile, extractPublicId, getResourceType } from '../utils/fileUpload.js';
 const router = express.Router();
 
 const cache = new Map();
@@ -80,41 +81,13 @@ const getAddressFromCoords = async (lat, lng) => {
     return `${parseFloat(lat).toFixed(6)}, ${parseFloat(lng).toFixed(6)}`;
   }
 };
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = 'uploads/emergency';
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
-const upload = multer({
-  storage,
-  limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('audio/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image and audio files are allowed'));
-    }
-  }
-});
 
 // Trigger emergency
 router.post(
   '/trigger',
   auth,
   authorize('Individual', 'Child', 'Member', 'Parent'),
-  upload.fields([
+  uploadEmergencyMedia.fields([
     { name: 'image', maxCount: 1 },
     { name: 'audio', maxCount: 1 }
   ]),
@@ -172,10 +145,10 @@ router.post(
         description: description || message || '',
         message: message || description || resolvedAddress,
         image: req.files?.image?.[0]
-          ? `/uploads/emergency/${req.files.image[0].filename}`
+          ? req.files.image[0].path || req.files.image[0].secure_url // Cloudinary URL
           : '',
         audioRecording: req.files?.audio?.[0]
-          ? `/uploads/emergency/${req.files.audio[0].filename}`
+          ? req.files.audio[0].path || req.files.audio[0].secure_url // Cloudinary URL
           : ''
       });
 
@@ -256,6 +229,31 @@ router.post(
 
     } catch (error) {
       console.error('Emergency trigger error:', error);
+      
+      // Delete uploaded files from Cloudinary if database save failed
+      if (req.files) {
+        if (req.files.image?.[0]?.public_id || req.files.image?.[0]?.filename) {
+          try {
+            const publicId = req.files.image[0].public_id || req.files.image[0].filename;
+            const resourceType = getResourceType(req.files.image[0].path || req.files.image[0].secure_url);
+            await deleteCloudinaryFile(publicId, resourceType);
+            console.log('Deleted orphaned Cloudinary image:', publicId);
+          } catch (deleteError) {
+            console.error('Failed to delete orphaned Cloudinary image:', deleteError);
+          }
+        }
+        if (req.files.audio?.[0]?.public_id || req.files.audio?.[0]?.filename) {
+          try {
+            const publicId = req.files.audio[0].public_id || req.files.audio[0].filename;
+            const resourceType = getResourceType(req.files.audio[0].path || req.files.audio[0].secure_url);
+            await deleteCloudinaryFile(publicId, resourceType);
+            console.log('Deleted orphaned Cloudinary audio:', publicId);
+          } catch (deleteError) {
+            console.error('Failed to delete orphaned Cloudinary audio:', deleteError);
+          }
+        }
+      }
+      
       res.status(500).json({
         success: false,
         message: 'Server error triggering emergency'
@@ -451,19 +449,30 @@ router.post('/send-email', auth, async (req, res) => {
 // Get active emergencies for a member
 router.get('/active', auth, (req, res, next) => {
   const userRole = req.user.userType?.toLowerCase();
-  if (userRole !== 'member' && userRole !== 'parent') {
+  if (userRole !== 'member' && userRole !== 'parent' && userRole !== 'individual') {
     return res.status(403).json({
       success: false,
-      message: 'Access denied. Only members and parents can access active emergencies.'
+      message: 'Access denied. Only members, parents, and individuals can access active emergencies.'
     });
   }
   next();
 }, async (req, res) => {
   try {
-    const emergencies = await Emergency.find({
-      status: 'Active',
-      'notifiedMembers.memberId': req.user.id
-    })
+    const userId = req.user.id;
+    const userRole = req.user.userType?.toLowerCase();
+    
+    // Build query based on user role
+    let query = { status: 'Active' };
+    
+    if (userRole === 'individual') {
+      // Individuals see emergencies they triggered
+      query.individualId = userId;
+    } else {
+      // Members and parents see emergencies where they're notified
+      query['notifiedMembers.memberId'] = userId;
+    }
+    
+    const emergencies = await Emergency.find(query)
       .populate('individualId', 'name phone email profileImage')
       .populate('notifiedMembers.memberId', 'name phone email')
       .sort({ createdAt: -1 });
@@ -864,7 +873,7 @@ router.put('/:emergencyId/edit', auth, async (req, res) => {
   }
 });
 //edit emergency details (title, description, location) - only by individual who triggered it
-router.put('/:emergencyId', auth, authorize('Individual', 'Child', 'Member', 'Parent'), upload.fields([
+router.put('/:emergencyId', auth, authorize('Individual', 'Child', 'Member', 'Parent'), uploadEmergencyMedia.fields([
   { name: 'image', maxCount: 1 },
   { name: 'audio', maxCount: 1 }
 ]), async (req, res) => {
@@ -883,13 +892,29 @@ router.put('/:emergencyId', auth, authorize('Individual', 'Child', 'Member', 'Pa
       emergency.location.address = req.body.location;
     }
 
-    // 🔥 REPLACE FILE (important)
+    // 🔥 REPLACE FILE (important) - Delete old Cloudinary file if exists
     if (req.files?.image?.[0]) {
-      emergency.image = `/uploads/emergency/${req.files.image[0].filename}`;
+      // Delete old image from Cloudinary if it's a Cloudinary URL
+      if (emergency.image && emergency.image.includes('cloudinary.com')) {
+        const oldPublicId = extractPublicId(emergency.image);
+        if (oldPublicId) {
+          const resourceType = getResourceType(emergency.image);
+          await deleteCloudinaryFile(oldPublicId, resourceType);
+        }
+      }
+      emergency.image = req.files.image[0].path; // Cloudinary URL
     }
 
     if (req.files?.audio?.[0]) {
-      emergency.audioRecording = `/uploads/emergency/${req.files.audio[0].filename}`;
+      // Delete old audio from Cloudinary if it's a Cloudinary URL
+      if (emergency.audioRecording && emergency.audioRecording.includes('cloudinary.com')) {
+        const oldPublicId = extractPublicId(emergency.audioRecording);
+        if (oldPublicId) {
+          const resourceType = getResourceType(emergency.audioRecording);
+          await deleteCloudinaryFile(oldPublicId, resourceType);
+        }
+      }
+      emergency.audioRecording = req.files.audio[0].path; // Cloudinary URL
     }
 
     emergency.addTimelineEvent(

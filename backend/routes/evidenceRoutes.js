@@ -1,39 +1,10 @@
 import express from 'express';
-import multer from 'multer';
-import path from 'path';
 import Emergency from '../models/Emergency.js';
 import Relationship from '../models/Relationship.js';
 import { auth } from '../middleware/auth.js';
+import { uploadEmergencyMedia, deleteCloudinaryFile, extractPublicId, getResourceType } from '../utils/fileUpload.js';
 
 const router = express.Router();
-
-// Multer configuration for file uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadDir = path.join(process.cwd(), 'uploads', 'evidence');
-    require('fs').mkdirSync(uploadDir, { recursive: true });
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
-const upload = multer({ 
-  storage: storage,
-  limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
-  },
-  fileFilter: function (req, file, cb) {
-    // Allow images and audio files
-    if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('audio/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image and audio files are allowed'));
-    }
-  }
-});
 
 // GET all evidence for logged-in user
 router.get('/', auth, async (req, res) => {
@@ -83,7 +54,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // Upload photo evidence
-router.post('/upload/photo', auth, upload.single('photo'), async (req, res) => {
+router.post('/upload/photo', auth, uploadEmergencyMedia.single('photo'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -98,7 +69,7 @@ router.post('/upload/photo', auth, upload.single('photo'), async (req, res) => {
       triggeredBy: 'Manual',
       severity: 'Low',
       message: 'Photo evidence captured',
-      image: `/uploads/evidence/${req.file.filename}`,
+      image: req.file.path || req.file.secure_url || req.file.secure_url, // Cloudinary URL
       title: `Photo Evidence - ${new Date().toLocaleString()}`
     });
 
@@ -109,13 +80,26 @@ router.post('/upload/photo', auth, upload.single('photo'), async (req, res) => {
       message: 'Photo evidence uploaded successfully',
       data: {
         evidenceId: `${emergency._id}-img`,
-        fileUrl: `/uploads/evidence/${req.file.filename}`,
+        fileUrl: req.file.path || req.file.secure_url || req.file.secure_url, // Cloudinary URL
+        publicId: req.file.public_id || req.file.public_id || req.file.filename, // Cloudinary public ID for deletion
         createdAt: emergency.createdAt
       }
     });
 
   } catch (error) {
     console.error('Error uploading photo evidence:', error);
+    
+    // Delete the uploaded file from Cloudinary if database save failed
+    if (req.file && req.file.public_id || req.file.filename) {
+      try {
+        const resourceType = getResourceType(req.file.path || req.file.secure_url);
+        await deleteCloudinaryFile(req.file.public_id || req.file.filename, resourceType);
+        console.log('Deleted orphaned Cloudinary file:', req.file.public_id || req.file.filename);
+      } catch (deleteError) {
+        console.error('Failed to delete orphaned Cloudinary file:', deleteError);
+      }
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Failed to upload photo evidence'
@@ -124,7 +108,7 @@ router.post('/upload/photo', auth, upload.single('photo'), async (req, res) => {
 });
 
 // Upload audio evidence
-router.post('/upload/audio', auth, upload.single('audio'), async (req, res) => {
+router.post('/upload/audio', auth, uploadEmergencyMedia.single('audio'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -139,7 +123,7 @@ router.post('/upload/audio', auth, upload.single('audio'), async (req, res) => {
       triggeredBy: 'Manual',
       severity: 'Low',
       message: 'Audio evidence captured',
-      audioRecording: `/uploads/evidence/${req.file.filename}`,
+      audioRecording: req.file.path || req.file.secure_url || req.file.secure_url, // Cloudinary URL
       title: `Audio Evidence - ${new Date().toLocaleString()}`
     });
 
@@ -150,13 +134,26 @@ router.post('/upload/audio', auth, upload.single('audio'), async (req, res) => {
       message: 'Audio evidence uploaded successfully',
       data: {
         evidenceId: `${emergency._id}-audio`,
-        fileUrl: `/uploads/evidence/${req.file.filename}`,
+        fileUrl: req.file.path || req.file.secure_url || req.file.secure_url, // Cloudinary URL
+        publicId: req.file.public_id || req.file.public_id || req.file.filename, // Cloudinary public ID for deletion
         createdAt: emergency.createdAt
       }
     });
 
   } catch (error) {
     console.error('Error uploading audio evidence:', error);
+    
+    // Delete the uploaded file from Cloudinary if database save failed
+    if (req.file && req.file.public_id || req.file.filename) {
+      try {
+        const resourceType = getResourceType(req.file.path || req.file.secure_url);
+        await deleteCloudinaryFile(req.file.public_id || req.file.filename, resourceType);
+        console.log('Deleted orphaned Cloudinary file:', req.file.public_id || req.file.filename);
+      } catch (deleteError) {
+        console.error('Failed to delete orphaned Cloudinary file:', deleteError);
+      }
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Failed to upload audio evidence'
@@ -165,7 +162,7 @@ router.post('/upload/audio', auth, upload.single('audio'), async (req, res) => {
 });
 
 // Upload screenshot evidence
-router.post('/upload/screenshot', auth, upload.single('screenshot'), async (req, res) => {
+router.post('/upload/screenshot', auth, uploadEmergencyMedia.single('screenshot'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -180,7 +177,7 @@ router.post('/upload/screenshot', auth, upload.single('screenshot'), async (req,
       triggeredBy: 'Manual',
       severity: 'Low',
       message: 'Screenshot evidence captured',
-      image: `/uploads/evidence/${req.file.filename}`,
+      image: req.file.path || req.file.secure_url, // Cloudinary URL
       title: `Screenshot Evidence - ${new Date().toLocaleString()}`
     });
 
@@ -191,16 +188,29 @@ router.post('/upload/screenshot', auth, upload.single('screenshot'), async (req,
       message: 'Screenshot evidence uploaded successfully',
       data: {
         evidenceId: `${emergency._id}-img`,
-        fileUrl: `/uploads/evidence/${req.file.filename}`,
+        fileUrl: req.file.path || req.file.secure_url, // Cloudinary URL
+        publicId: req.file.public_id || req.file.filename, // Cloudinary public ID for deletion
         createdAt: emergency.createdAt
       }
     });
 
   } catch (error) {
     console.error('Error uploading screenshot evidence:', error);
+    
+    // Delete the uploaded file from Cloudinary if database save failed
+    if (req.file && req.file.public_id || req.file.filename) {
+      try {
+        const resourceType = getResourceType(req.file.path || req.file.secure_url);
+        await deleteCloudinaryFile(req.file.public_id || req.file.filename, resourceType);
+        console.log('Deleted orphaned Cloudinary file:', req.file.public_id || req.file.filename);
+      } catch (deleteError) {
+        console.error('Failed to delete orphaned Cloudinary file:', deleteError);
+      }
+    }
+    
     res.status(500).json({
       success: false,
-      message: 'Failed to upload screenshot evidence'
+      message: 'Failed to upload screenshot'
     });
   }
 });
@@ -362,6 +372,152 @@ router.get('/children', auth, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch children'
+    });
+  }
+});
+
+// Delete evidence
+router.delete('/:evidenceId', auth, async (req, res) => {
+  try {
+    const { evidenceId } = req.params;
+
+    // Extract emergency ID from evidenceId (format: emergencyId-type)
+    const emergencyId = evidenceId.split('-')[0];
+    const type = evidenceId.split('-')[1];
+
+    const emergency = await Emergency.findById(emergencyId);
+
+    if (!emergency) {
+      return res.status(404).json({
+        success: false,
+        message: 'Evidence not found'
+      });
+    }
+
+    // Check if user owns this evidence
+    if (emergency.individualId.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to delete this evidence'
+      });
+    }
+
+    let fileUrl = '';
+    let publicId = '';
+
+    // Get the file URL based on type
+    if (type === 'img' || type === 'photo' || type === 'screenshot') {
+      fileUrl = emergency.image;
+    } else if (type === 'audio') {
+      fileUrl = emergency.audioRecording;
+    }
+
+    // Delete from Cloudinary if it's a Cloudinary URL
+    if (fileUrl && fileUrl.includes('cloudinary.com')) {
+      publicId = extractPublicId(fileUrl);
+      if (publicId) {
+        const resourceType = getResourceType(fileUrl);
+        await deleteCloudinaryFile(publicId, resourceType);
+      }
+    }
+
+    // Remove the evidence from the emergency record
+    if (type === 'img' || type === 'photo' || type === 'screenshot') {
+      emergency.image = undefined;
+    } else if (type === 'audio') {
+      emergency.audioRecording = undefined;
+    }
+
+    await emergency.save();
+
+    res.json({
+      success: true,
+      message: 'Evidence deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Error deleting evidence:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete evidence'
+    });
+  }
+});
+
+// Update evidence (replace file)
+router.put('/:evidenceId', auth, uploadEmergencyMedia.single('file'), async (req, res) => {
+  try {
+    const { evidenceId } = req.params;
+
+    // Extract emergency ID from evidenceId (format: emergencyId-type)
+    const emergencyId = evidenceId.split('-')[0];
+    const type = evidenceId.split('-')[1];
+
+    const emergency = await Emergency.findById(emergencyId);
+
+    if (!emergency) {
+      return res.status(404).json({
+        success: false,
+        message: 'Evidence not found'
+      });
+    }
+
+    // Check if user owns this evidence
+    if (emergency.individualId.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to update this evidence'
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file provided'
+      });
+    }
+
+    let oldFileUrl = '';
+
+    // Get the old file URL based on type
+    if (type === 'img' || type === 'photo' || type === 'screenshot') {
+      oldFileUrl = emergency.image;
+    } else if (type === 'audio') {
+      oldFileUrl = emergency.audioRecording;
+    }
+
+    // Delete old file from Cloudinary if it's a Cloudinary URL
+    if (oldFileUrl && oldFileUrl.includes('cloudinary.com')) {
+      const oldPublicId = extractPublicId(oldFileUrl);
+      if (oldPublicId) {
+        const resourceType = getResourceType(oldFileUrl);
+        await deleteCloudinaryFile(oldPublicId, resourceType);
+      }
+    }
+
+    // Update with new file
+    if (type === 'img' || type === 'photo' || type === 'screenshot') {
+      emergency.image = req.file.path || req.file.secure_url;
+    } else if (type === 'audio') {
+      emergency.audioRecording = req.file.path || req.file.secure_url;
+    }
+
+    await emergency.save();
+
+    res.json({
+      success: true,
+      message: 'Evidence updated successfully',
+      data: {
+        fileUrl: req.file.path || req.file.secure_url,
+        publicId: req.file.public_id || req.file.filename
+      }
+    });
+
+  } catch (error) {
+    console.error('Error updating evidence:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update evidence'
     });
   }
 });

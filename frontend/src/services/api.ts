@@ -335,6 +335,8 @@ export const emergencyAPI = {
       return response.data;
     } catch (error: any) {
       console.error('SOS trigger error:', error);
+      console.error('Error response:', error.response?.data);
+      console.error('Error status:', error.response?.status);
       
       // Enhanced error handling
       if (error.response?.status === 429) {
