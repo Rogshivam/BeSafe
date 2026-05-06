@@ -20,6 +20,9 @@ const app = express();
 const server = createServer(app);
 const isDevelopment = process.env.NODE_ENV === "development";
 
+// Trust proxy for Render and other cloud platforms
+app.set('trust proxy', 1);
+
 const io = new Server(server, {
   cors: {
     origin: isDevelopment

@@ -17,17 +17,38 @@ class NotificationService {
       return;
     }
 
+    // Use SSL on port 465 for production cloud platforms (more reliable than STARTTLS)
+    const isProduction = process.env.NODE_ENV === 'production';
+    
     this.emailTransporter = nodemailer.createTransport({
       host: process.env.EMAIL_HOST || "smtp.gmail.com",
-      port: parseInt(process.env.EMAIL_PORT || "587"),
-      secure: process.env.EMAIL_SECURE === "true",
+      port: isProduction ? 465 : parseInt(process.env.EMAIL_PORT || "587"),
+      secure: isProduction ? true : (process.env.EMAIL_SECURE === "true"),
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
       },
-      connectionTimeout: 10000, // 10 seconds
-      greetingTimeout: 5000, // 5 seconds
-      socketTimeout: 10000, // 10 seconds
+      connectionTimeout: 30000,
+      greetingTimeout: 15000,
+      socketTimeout: 30000,
+      tls: {
+        rejectUnauthorized: false,
+        minVersion: 'TLSv1.2'
+      },
+      pool: true,
+      maxConnections: 3,
+      maxMessages: 10
+    });
+    
+    // Verify connection on startup
+    this.emailTransporter.verify((error, success) => {
+      if (error) {
+        console.error('Email service verification failed:', error.message);
+        console.error('If you are on Render free tier, SMTP ports (587/465) may be blocked.');
+        console.error('Solutions: 1) Upgrade to Render paid tier, 2) Use SendGrid/Mailgun API instead of SMTP');
+      } else {
+        console.log('Email service ready - SMTP connection verified');
+      }
     });
 
     
@@ -76,7 +97,7 @@ class NotificationService {
 
     try {
       const info = await this.emailTransporter.sendMail(mailOptions);
-      console.log("Password reset email sent:", info.messageId);
+      // console.log("Password reset email sent:", info.messageId);
       return true;
     } catch (error) {
       console.error("Email send error:", error);
@@ -133,7 +154,7 @@ class NotificationService {
         if (this.emailTransporter) {
           try {
             const info = await this.emailTransporter.sendMail(mailOptions);
-            console.log(`Relationship notification email sent to ${user.email}:`, info.messageId);
+            // console.log(`Relationship notification email sent to ${user.email}:`, info.messageId);
           } catch (error) {
             console.error('Error sending relationship notification email:', error);
           }
@@ -150,16 +171,6 @@ class NotificationService {
 
   async sendSOSEmergencyNotification({ childId, childName, childLocation, parentEmail, severity = 'Emergency' }) {
     try {
-      // Debug logging
-      // console.log('sendSOSEmergencyNotification called with:', {
-      //   childId,
-      //   childName,
-      //   parentEmail,
-      //   parentEmailType: typeof parentEmail,
-      //   hasLocation: !!childLocation,
-      //   severity
-      // });
-
       // Validate required parameters
       if (!parentEmail) {
         console.error('Parent email is required for SOS notification');
@@ -171,19 +182,14 @@ class NotificationService {
         return false;
       }
 
-      // console.log('Sending SOS notification:', {
-      //   childId,
-      //   childName,
-      //   parentEmail,
-      //   hasLocation: !!childLocation,
-      //   severity
-      // });
-
       // Get parent user details (optional - just for logging)
       const parent = await User.findOne({ email: parentEmail });
       if (!parent) {
         console.warn('Parent not found for email:', parentEmail, '- but will still send email');
       }
+
+      // Log attempt for debugging
+      // console.log(`Attempting to send SOS email to ${parentEmail} via ${process.env.EMAIL_HOST || 'smtp.gmail.com'}:${this.emailTransporter?.options?.port || '465'}`);
 
       // Create location links for different map services
       const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${childLocation.latitude},${childLocation.longitude}`;
@@ -273,14 +279,26 @@ class NotificationService {
       };
 
       if (this.emailTransporter) {
-        // Send email without blocking - fire and forget for emergency speed
-        this.emailTransporter.sendMail(mailOptions)
-          .then(info => {
+        // Send with retry logic for production
+        const sendWithRetry = async (retries = 2) => {
+          try {
+            const info = await this.emailTransporter.sendMail(mailOptions);
             // console.log(`SOS emergency email sent to ${parentEmail}:`, info.messageId);
-          })
-          .catch(error => {
-            console.error('Error sending SOS email:', error);
-          });
+            return true;
+          } catch (error) {
+            if (error.code === 'ETIMEDOUT' && retries > 0) {
+              // console.log(`Email timeout, retrying... (${retries} attempts left)`);
+
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              return sendWithRetry(retries - 1);
+            }
+            console.error('Error sending SOS email:', error.message, '| Code:', error.code);
+            return false;
+          }
+        };
+        
+        // Fire and forget but with retry
+        sendWithRetry();
         return true; // Return immediately for emergency response speed
       }
 
