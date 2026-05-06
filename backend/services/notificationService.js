@@ -25,6 +25,9 @@ class NotificationService {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
       },
+      connectionTimeout: 10000, // 10 seconds
+      greetingTimeout: 5000, // 5 seconds
+      socketTimeout: 10000, // 10 seconds
     });
 
     
@@ -72,18 +75,9 @@ class NotificationService {
     };
 
     try {
-      // const info = await this.emailTransporter.sendMail(mailOptions);
-      
-      // return true;
-      this.emailTransporter.sendMail(mailOptions)
-  .then(info => {
-    // console.log("Email sent:", info.messageId);
-  })
-  .catch(err => {
-    console.error("Email error:", err);
-  });
-
-return true; // return immediately
+      const info = await this.emailTransporter.sendMail(mailOptions);
+      console.log("Password reset email sent:", info.messageId);
+      return true;
     } catch (error) {
       console.error("Email send error:", error);
       return false;
@@ -137,14 +131,12 @@ return true; // return immediately
         };
 
         if (this.emailTransporter) {
-          // Send email asynchronously without blocking
-          this.emailTransporter.sendMail(mailOptions)
-            .then(info => {
-              // console.log(`Relationship notification email sent to ${user.email}:`, info.messageId);
-            })
-            .catch(error => {
-              console.error('Error sending relationship notification email:', error);
-            });
+          try {
+            const info = await this.emailTransporter.sendMail(mailOptions);
+            console.log(`Relationship notification email sent to ${user.email}:`, info.messageId);
+          } catch (error) {
+            console.error('Error sending relationship notification email:', error);
+          }
         }
       }
 
@@ -281,7 +273,7 @@ return true; // return immediately
       };
 
       if (this.emailTransporter) {
-        // Send email without blocking emergency response
+        // Send email without blocking - fire and forget for emergency speed
         this.emailTransporter.sendMail(mailOptions)
           .then(info => {
             // console.log(`SOS emergency email sent to ${parentEmail}:`, info.messageId);
@@ -289,7 +281,7 @@ return true; // return immediately
           .catch(error => {
             console.error('Error sending SOS email:', error);
           });
-        return true; // Return immediately, don't wait for email
+        return true; // Return immediately for emergency response speed
       }
 
       return false;

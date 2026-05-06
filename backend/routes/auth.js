@@ -195,8 +195,8 @@ router.put('/reset-password/:token', async (req, res) => {
       retryCount++;
       
       if (retryCount < maxRetries) {
-        // console.log(`Retrying in 1 second...`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // console.log(`Retrying in 100ms...`);
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
   }
@@ -244,8 +244,8 @@ router.put('/reset-password/:token', async (req, res) => {
         updateRetryCount++;
         
         if (updateRetryCount < maxUpdateRetries) {
-          // console.log(`Retrying update in 1 second...`);
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // console.log(`Retrying update in 100ms...`);
+          await new Promise(resolve => setTimeout(resolve, 100));
         } else {
           throw updateError; // Re-throw after max retries
         }
@@ -268,8 +268,8 @@ router.put('/reset-password/:token', async (req, res) => {
         verifyRetryCount++;
         
         if (verifyRetryCount < maxVerifyRetries) {
-          // console.log(`Retrying verification in 1 second...`);
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // console.log(`Retrying verification in 100ms...`);
+          await new Promise(resolve => setTimeout(resolve, 100));
         } else {
           throw verifyError;
         }

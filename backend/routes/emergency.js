@@ -88,10 +88,29 @@ router.post(
   '/trigger',
   auth,
   authorize('Individual', 'Child', 'Member', 'Parent'),
-  uploadEmergencyMedia.fields([
-    { name: 'image', maxCount: 1 },
-    { name: 'audio', maxCount: 1 }
-  ]),
+  (req, res, next) => {
+    uploadEmergencyMedia.fields([
+      { name: 'image', maxCount: 1 },
+      { name: 'audio', maxCount: 1 }
+    ])(req, res, (err) => {
+      if (err instanceof multer.MulterError) {
+        console.error('Multer upload error:', err);
+        return res.status(400).json({
+          success: false,
+          message: `Upload error: ${err.message}`,
+          error: 'UPLOAD_ERROR'
+        });
+      } else if (err) {
+        console.error('Upload error:', err);
+        return res.status(400).json({
+          success: false,
+          message: err.message || 'File upload failed',
+          error: 'UPLOAD_ERROR'
+        });
+      }
+      next();
+    });
+  },
   validateEmergency,
   handleValidationErrors,
   async (req, res) => {
@@ -207,28 +226,38 @@ router.post(
         }
       }
 
-      // Send SOS email to parent with location sharing links
+      // Send SOS email to parent with location sharing links (parallel for speed)
       if (emergency.location && (user.userType === 'Child' || user.userType === 'Individual' || user.userType === 'Adult')) {
-        // Find parent relationships
-        // const Relationship = require('../models/Relationship.js');
-
         const parentRelationships = await Relationship.find({
           childId: req.user.id,
           status: 'active'
         }).populate('parentId', 'email name');
 
-        // Send email to each parent
-        for (const relationship of parentRelationships) {
-          if (relationship.parentId && relationship.parentId.email) {
-            await notificationService.sendSOSEmergencyNotification({
-              childId: req.user.id,
-              childName: user.name,
-              childLocation: emergency.location,
-              parentEmail: relationship.parentId.email,
-              severity: emergency.severity
-            });
-          }
-        }
+        // Send emails in parallel for speed with timeout protection
+        const emailPromises = parentRelationships
+          .filter(rel => rel.parentId && rel.parentId.email)
+          .map(relationship => 
+            Promise.race([
+              notificationService.sendSOSEmergencyNotification({
+                childId: req.user.id,
+                childName: user.name,
+                childLocation: emergency.location,
+                parentEmail: relationship.parentId.email,
+                severity: emergency.severity
+              }),
+              new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Email timeout')), 15000)
+              )
+            ]).catch(err => {
+              console.error('Email send error:', err.message);
+              return false;
+            })
+          );
+        
+        // Don't await - let emails send in background
+        Promise.allSettled(emailPromises).catch(err => {
+          console.error('Email batch error:', err);
+        });
       }
 
       res.status(201).json({
@@ -243,6 +272,12 @@ router.post(
 
     } catch (error) {
       console.error('Emergency trigger error:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+        code: error.code
+      });
       
       // Delete uploaded files from Cloudinary if database save failed
       if (req.files) {
@@ -270,7 +305,8 @@ router.post(
       
       res.status(500).json({
         success: false,
-        message: 'Server error triggering emergency'
+        message: error.message || 'Server error triggering emergency',
+        error: error.name
       });
     }
   }
@@ -361,26 +397,29 @@ router.post('/notify-parents', auth, async (req, res) => {
 
     // console.log(`Found ${parentRelationships.length} parent relationships`);
 
-    // Send email to each parent
-    let emailSent = false;
-    for (const relationship of parentRelationships) {
-      if (relationship.parentId && relationship.parentId.email) {
-        // console.log('Sending email to parent:', relationship.parentId.email);
-        const success = await notificationService.sendSOSEmergencyNotification({
-          childId: userId,
-          childName: childName || req.user.name || 'Child',
-          childLocation: childLocation,
-          parentEmail: relationship.parentId.email,
-          severity: severity || 'Emergency'
-        });
-        if (success) {
-          emailSent = true;
-          // console.log('Email sent successfully to:', relationship.parentId.email);
-        } else {
-          // console.log('Failed to send email to:', relationship.parentId.email);
-        }
-      }
-    }
+    // Send emails in parallel for speed with timeout protection
+    const emailPromises = parentRelationships
+      .filter(rel => rel.parentId && rel.parentId.email)
+      .map(relationship => 
+        Promise.race([
+          notificationService.sendSOSEmergencyNotification({
+            childId: userId,
+            childName: childName || req.user.name || 'Child',
+            childLocation: childLocation,
+            parentEmail: relationship.parentId.email,
+            severity: severity || 'Emergency'
+          }),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Email timeout')), 15000)
+          )
+        ]).catch(err => {
+          console.error('Email send error:', err.message);
+          return false;
+        })
+      );
+    
+    const results = await Promise.allSettled(emailPromises);
+    const emailSent = results.some(r => r.status === 'fulfilled' && r.value === true);
 
     if (emailSent) {
       res.json({
@@ -424,20 +463,29 @@ router.post('/send-email', auth, async (req, res) => {
       });
     }
 
-    // Send email to each parent
-    let emailSent = false;
-    for (const relationship of parentRelationships) {
-      if (relationship.parentId && relationship.parentId.email) {
-        const success = await notificationService.sendSOSEmergencyNotification(
-          userId,
-          childName || req.user.name,
-          childLocation,
-          relationship.parentId.email,
-          severity || 'Emergency'
-        );
-        if (success) emailSent = true;
-      }
-    }
+    // Send emails in parallel for speed with timeout protection
+    const emailPromises = parentRelationships
+      .filter(rel => rel.parentId && rel.parentId.email)
+      .map(relationship => 
+        Promise.race([
+          notificationService.sendSOSEmergencyNotification({
+            childId: userId,
+            childName: childName || req.user.name,
+            childLocation: childLocation,
+            parentEmail: relationship.parentId.email,
+            severity: severity || 'Emergency'
+          }),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Email timeout')), 15000)
+          )
+        ]).catch(err => {
+          console.error('Email send error:', err.message);
+          return false;
+        })
+      );
+    
+    const results = await Promise.allSettled(emailPromises);
+    const emailSent = results.some(r => r.status === 'fulfilled' && r.value === true);
 
     if (emailSent) {
       res.json({
