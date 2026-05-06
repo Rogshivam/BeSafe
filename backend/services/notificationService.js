@@ -10,12 +10,12 @@ class NotificationService {
   }
 
   initialize() {
-    // console.log('Initializing email service...');
-    // console.log('EMAIL_USER:', process.env.EMAIL_USER ? 'SET' : 'NOT SET');
-    // console.log('EMAIL_PASS:', process.env.EMAIL_PASS ? 'SET' : 'NOT SET');
-    // console.log('EMAIL_HOST:', process.env.EMAIL_HOST || 'smtp.gmail.com');
-    // console.log('EMAIL_PORT:', process.env.EMAIL_PORT || '587');
-    
+    console.log('Initializing email service...');
+    console.log('EMAIL_USER:', process.env.EMAIL_USER ? 'SET' : 'NOT SET');
+    console.log('EMAIL_PASS:', process.env.EMAIL_PASS ? 'SET' : 'NOT SET');
+    console.log('EMAIL_HOST:', process.env.EMAIL_HOST || 'smtp.gmail.com');
+    console.log('EMAIL_PORT:', process.env.EMAIL_PORT || '587');
+
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
       console.warn("EMAIL_USER / EMAIL_PASS not set; email service disabled");
       return;
@@ -30,18 +30,21 @@ class NotificationService {
         pass: process.env.EMAIL_PASS,
       },
     });
-    
-    // console.log('Email transporter created successfully');
+
+    console.log('Email transporter created successfully');
   }
 
   async sendPasswordResetEmail(email, resetToken) {
+    console.log('sendPasswordResetEmail called for:', email);
+    
     if (!this.emailTransporter || !process.env.EMAIL_USER) {
-      // console.log("Email service not configured");
+      console.log("Email service not configured");
       return false;
     }
 
     const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
     const resetLink = `${clientUrl}/reset-password/${resetToken}`;
+    console.log('Reset link:', resetLink);
 
     const html = `
       <!DOCTYPE html>
@@ -74,7 +77,7 @@ class NotificationService {
 
     try {
       const info = await this.emailTransporter.sendMail(mailOptions);
-      // console.log("Email sent:", info.messageId);
+      console.log("Email sent:", info.messageId);
       return true;
     } catch (error) {
       console.error("Email send error:", error);
@@ -291,6 +294,47 @@ class NotificationService {
 
     } catch (error) {
       console.error('Error sending SOS emergency notification:', error);
+      return false;
+    }
+  }
+
+  // Test email function for debugging
+  async sendTestEmail(toEmail = process.env.EMAIL_USER) {
+    console.log('🧪 Sending test email to:', toEmail);
+    
+    if (!this.emailTransporter) {
+      console.error('❌ Email transporter not initialized');
+      return false;
+    }
+
+    const testMailOptions = {
+      from: `"Be-Safe Test" <${process.env.EMAIL_USER}>`,
+      to: toEmail,
+      subject: '🧪 BeSafe Email Service Test',
+      html: `
+        <div style="font-family: sans-serif; padding: 20px; background:#f0f9ff;">
+          <h2>🧪 Email Service Test</h2>
+          <p>This is a test email from BeSafe application.</p>
+          <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
+          <p><strong>Environment:</strong> ${process.env.NODE_ENV}</p>
+          <p>If you receive this email, the email service is working correctly.</p>
+        </div>
+      `,
+    };
+
+    try {
+      const info = await this.emailTransporter.sendMail(testMailOptions);
+      console.log('✅ Test email sent successfully:', info.messageId);
+      console.log('✅ Preview URL:', nodemailer.getTestMessageUrl(info));
+      return true;
+    } catch (error) {
+      console.error('❌ Test email failed:', error);
+      console.error('❌ Error details:', {
+        code: error.code,
+        command: error.command,
+        response: error.response,
+        responseCode: error.responseCode
+      });
       return false;
     }
   }

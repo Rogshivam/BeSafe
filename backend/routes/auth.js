@@ -9,15 +9,67 @@ import {
   validateLogin,
   handleValidationErrors
 } from '../middleware/validation.js';
-import NotificationService from '../services/notificationService.js';
+
 const router = express.Router();
 
+// Email normalization function - Gmail ignores dots in the local part
+
+
+// function normalizeEmail(email) {
+//   if (!email) return email;
+
+//   let normalized = email.toLowerCase().trim();
+
+//   // Fix ONLY if @ is missing before gmail.com
+//   if (!normalized.includes('@') && normalized.includes('gmail.com')) {
+//     normalized = normalized.replace('gmail.com', '@gmail.com');
+//   }
+
+//   // Remove accidental double @
+//   normalized = normalized.replace(/@@+/g, '@');
+
+//   // Gmail normalization
+//   if (normalized.endsWith('@gmail.com')) {
+//     const [localPart, domain] = normalized.split('@');
+
+//     return `${localPart
+//       .replace(/\./g, '')
+//       .split('+')[0]
+//     }@${domain}`;
+//   }
+
+//   return normalized;
+// }
+function normalizeEmail(email) {
+  if (!email) return email;
+
+  let normalized = email.toLowerCase().trim();
+
+  // Fix missing @ only if clearly broken
+  if (!normalized.includes('@') && normalized.includes('gmail.com')) {
+    normalized = normalized.replace('gmail.com', '@gmail.com');
+  }
+
+  // Remove accidental @@
+  normalized = normalized.replace(/@@+/g, '@');
+
+  // Remove ONLY + alias (safe)
+  if (normalized.endsWith('@gmail.com')) {
+    const [localPart, domain] = normalized.split('@');
+    return `${localPart.split('+')[0]}@${domain}`;
+  }
+
+  return normalized;
+}
 // FORGOT PASSWORD (send reset token)
 
 router.post('/forgot-password', async (req, res) => {
   const { email } = req.body;
 
-  // console.log(`Forgot password request for email: ${email}`);
+  // Normalize email to handle Gmail dot variations
+  const normalizedEmail = normalizeEmail(email);
+
+  console.log(`Forgot password request for email: ${email} (normalized: ${normalizedEmail})`);
 
   if (!email) {
     // console.log('Forgot password failed: Email required');
@@ -27,63 +79,76 @@ router.post('/forgot-password', async (req, res) => {
     });
   }
 
-  const user = await User.findOne({ email });
-  if (!user) {
-    // console.log(`Forgot password: User not found for email: ${email}`);
-    // Always return success=true to avoid leaking existence
-    return res.json({
-      success: true,
-      message: 'If this email exists, a reset link has been sent',
-    });
+  let user;
+  let resetToken;
+  
+  try {
+    // user = await User.findOne({ email: normalizedEmail });
+    user = await User.findOne({
+  $or: [
+    { email: normalizedEmail },
+    { email: email.toLowerCase().trim() }
+  ]
+});
+  } catch (dbError) {
+    console.error('MongoDB error finding user:', dbError.message);
+    // For testing purposes, allow email sending even if MongoDB fails
+    console.log('Proceeding with email send for testing (MongoDB unavailable)');
   }
 
-  // console.log(`Forgot password: User found - ${user.name} (${user._id})`);
-
-  // Generate reset token
-  const resetToken = crypto.randomBytes(32).toString('hex');
+  // Generate reset token (always generate for testing)
+  resetToken = crypto.randomBytes(32).toString('hex');
   const hashedToken = crypto
     .createHash('sha256')
     .update(resetToken)
     .digest('hex');
 
-  // console.log(`Generated reset token for user ${user._id}: ${resetToken.substring(0, 10)}...`);
-
-  // Set reset token and expiration (10 minutes)
-  user.resetPasswordToken = hashedToken;
-  user.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 minutes
-
-  try {
-    await user.save();
-    // console.log(`Reset token saved for user: ${user._id}, expires: ${new Date(user.resetPasswordExpire).toISOString()}`);
-
-    // Send password reset email
-    const emailSent = await NotificationService.sendPasswordResetEmail(email, resetToken);
+  // If user found and MongoDB is working, save reset token and send email
+  if (user) {
+    console.log(`Forgot password: User found - ${user.name} (${user._id})`);
+    user.resetPasswordToken = hashedToken;
+    user.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 minutes
     
-    if (emailSent) {
-      // console.log(`Password reset email sent to: ${email}`);
-    } else {
-      // console.log(`Failed to send password reset email to: ${email}`);
-    }
+    try {
+      await user.save();
+      console.log(`Reset token saved for user: ${user._id}`);
 
+      // Send password reset email
+      const notificationService = (await import('../services/notificationService.js')).default;
+      const emailSent = await notificationService.sendPasswordResetEmail(
+  user.email,
+  resetToken
+);
+      // const emailSent = await notificationService.sendPasswordResetEmail(email, resetToken);
+await notificationService.sendPasswordResetEmail(user.email, resetToken);
+      if (emailSent) {
+        console.log(`✅ Password reset email sent to: ${email}`);
+      } else {
+        console.log(`❌ Failed to send password reset email to: ${email}`);
+      }
+
+      res.json({
+        success: true,
+        message: 'If this email exists, a reset link has been sent',
+        data: process.env.NODE_ENV === 'development' ? {
+          token: resetToken,
+          userId: user._id,
+          expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString()
+        } : undefined
+      });
+
+    } catch (saveError) {
+      console.error('Error saving reset token:', saveError.message);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to process password reset request',
+      });
+    }
+  } else {
+    console.log(`Forgot password: User not found for email: ${email}`);
     res.json({
       success: true,
-      message: emailSent
-        ? 'If this email exists, a reset link has been sent'
-        : 'User found, but email could not be sent. Try again later.',
-      data: {
-        token: resetToken, // Only for development/testing
-        debug: process.env.NODE_ENV === 'development' ? {
-          userId: user._id,
-          expiresAt: new Date(user.resetPasswordExpire).toISOString()
-        } : undefined
-      }
-    });
-
-  } catch (error) {
-    console.error('Error saving reset token:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to process password reset request',
+      message: 'If this email exists, a reset link has been sent',
     });
   }
 });
@@ -93,14 +158,14 @@ router.put('/reset-password/:token', async (req, res) => {
   const { token } = req.params;
   const { password } = req.body;
 
-  // console.log(`=== PASSWORD RESET START ===`);
-  // console.log(`Token: ${token}`);
-  // console.log(`Password length: ${password?.length || 0}`);
-  // console.log(`Request body:`, req.body);
+  console.log(`=== PASSWORD RESET START ===`);
+  console.log(`Token: ${token}`);
+  console.log(`Password length: ${password?.length || 0}`);
+  console.log(`Request body:`, req.body);
 
   // Validate password
   if (!password || password.length < 6) {
-    // console.log('Password reset failed: Password too short');
+    console.log('Password reset failed: Password too short');
     return res.status(400).json({
       success: false,
       message: 'Password must be at least 6 characters',
@@ -113,77 +178,187 @@ router.put('/reset-password/:token', async (req, res) => {
     .update(token)
     .digest('hex');
 
-  // console.log(`Looking for user with hashed token: ${hashedToken.substring(0, 10)}...`);
+  console.log(`Looking for user with hashed token: ${hashedToken.substring(0, 10)}...`);
 
-  // Find user with valid reset token
-  const user = await User.findOne({
-    resetPasswordToken: hashedToken,
-    resetPasswordExpire: { $gt: Date.now() },
-  });
+  // Find user with valid reset token with retry logic
+  let user;
+  let retryCount = 0;
+  const maxRetries = 3;
+  
+  while (retryCount < maxRetries) {
+    try {
+      user = await User.findOne({
+        resetPasswordToken: hashedToken,
+        resetPasswordExpire: { $gt: Date.now() },
+      });
+      break; // Success, exit retry loop
+    } catch (dbError) {
+      console.error(`MongoDB error finding user (attempt ${retryCount + 1}/${maxRetries}):`, dbError.message);
+      retryCount++;
+      
+      if (retryCount < maxRetries) {
+        console.log(`Retrying in 1 second...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+  }
 
   if (!user) {
-    // console.log('Password reset failed: Invalid or expired token');
+    console.log('Password reset failed: Invalid or expired token (or MongoDB unavailable)');
     return res.status(400).json({
       success: false,
-      message: 'Invalid or expired token',
+      message: 'Invalid or expired token. Please request a new password reset link.',
+      error: 'INVALID_TOKEN'
     });
   }
 
-  // console.log(`Password reset for user: ${user.name} (${user._id})`);
-  // console.log(`User has reset token: ${!!user.resetPasswordToken}`);
-  // console.log(`Reset token expires: ${user.resetPasswordExpire ? new Date(user.resetPasswordExpire).toISOString() : 'none'}`);
+  console.log(`Password reset for user: ${user.name} (${user._id})`);
+  console.log(`User has reset token: ${!!user.resetPasswordToken}`);
+  console.log(`Reset token expires: ${user.resetPasswordExpire ? new Date(user.resetPasswordExpire).toISOString() : 'none'}`);
 
   try {
     // Hash new password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     
-    // console.log(`Generated new password hash length: ${hashedPassword.length}`);
+    console.log(`Generated new password hash length: ${hashedPassword.length}`);
     
-    // Update user password and clear reset token
-    // Use direct update to avoid pre-save middleware conflicts
-    const updateResult = await User.updateOne(
-      { _id: user._id },
-      { 
-        $set: {
-          password: hashedPassword,
-          lastActive: new Date()
-        },
-        $unset: {
-          resetPasswordToken: 1,
-          resetPasswordExpire: 1
+    // Update user password and clear reset token with retry logic
+    let updateResult;
+    let updateRetryCount = 0;
+    const maxUpdateRetries = 3;
+    
+    while (updateRetryCount < maxUpdateRetries) {
+      try {
+        updateResult = await User.updateOne(
+          { _id: user._id },
+          {
+            $set: {
+              password: hashedPassword,
+              resetPasswordToken: undefined,
+              resetPasswordExpire: undefined,
+            },
+          }
+        );
+        break; // Success, exit retry loop
+      } catch (updateError) {
+        console.error(`MongoDB error updating password (attempt ${updateRetryCount + 1}/${maxUpdateRetries}):`, updateError.message);
+        updateRetryCount++;
+        
+        if (updateRetryCount < maxUpdateRetries) {
+          console.log(`Retrying update in 1 second...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } else {
+          throw updateError; // Re-throw after max retries
         }
       }
-    );
+    }
 
-    // console.log(`Update result: ${updateResult.modifiedCount} documents modified`);
+    console.log(`Update result: ${updateResult.modifiedCount} documents modified`);
 
-    // Verify the update worked by fetching the user again
-    const updatedUser = await User.findById(user._id).select('+password');
-    // console.log(`Verification - User found: ${updatedUser ? 'Yes' : 'No'}, Password hash length: ${updatedUser?.password?.length || 0}`);
+    // Verify the update worked by fetching the user again with retry
+    let updatedUser;
+    let verifyRetryCount = 0;
+    const maxVerifyRetries = 3;
     
+    while (verifyRetryCount < maxVerifyRetries) {
+      try {
+        updatedUser = await User.findById(user._id).select('+password');
+        break;
+      } catch (verifyError) {
+        console.error(`MongoDB error verifying user (attempt ${verifyRetryCount + 1}/${maxVerifyRetries}):`, verifyError.message);
+        verifyRetryCount++;
+        
+        if (verifyRetryCount < maxVerifyRetries) {
+          console.log(`Retrying verification in 1 second...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } else {
+          throw verifyError;
+        }
+      }
+    }
+    
+    console.log(`Verification - User found: ${updatedUser ? 'Yes' : 'No'}, Password hash length: ${updatedUser?.password?.length || 0}`);
+
     // Test the new password immediately
     const testPasswordValid = await bcrypt.compare(password, updatedUser.password);
-    // console.log(`New password test: ${testPasswordValid}`);
+    console.log(`New password test: ${testPasswordValid}`);
 
-    // console.log(`=== PASSWORD RESET SUCCESS ===`);
+    if (!testPasswordValid) {
+      throw new Error('Password verification failed after update');
+    }
+
+    console.log(`=== PASSWORD RESET SUCCESS ===`);
 
     res.json({
       success: true,
-      message: 'Password reset successful',
-      data: {
-        userId: user._id,
-        timestamp: new Date().toISOString(),
-        passwordUpdated: testPasswordValid
-      }
+      message: 'Password reset successfully',
     });
 
   } catch (error) {
     console.error('Error updating password:', error);
-    // console.log(`=== PASSWORD RESET FAILED ===`);
+    console.log(`=== PASSWORD RESET FAILED ===`);
     res.status(500).json({
       success: false,
       message: 'Failed to update password. Please try again.',
+      error: 'UPDATE_FAILED'
+    });
+  }
+});
+
+// Debug endpoint to list all users (development only)
+router.get('/debug/users', async (req, res) => {
+  if (process.env.NODE_ENV !== 'development') {
+    return res.status(403).json({ success: false, message: 'Not allowed in production' });
+  }
+  
+  try {
+    const users = await User.find().select('email name _id').lean();
+    res.json({
+      success: true,
+      count: users.length,
+      data: users
+    });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch users'
+    });
+  }
+});
+
+// Debug endpoint to normalize all user emails (development only)
+router.post('/debug/normalize-emails', async (req, res) => {
+  if (process.env.NODE_ENV !== 'development') {
+    return res.status(403).json({ success: false, message: 'Not allowed in production' });
+  }
+  
+  try {
+    const users = await User.find();
+    let updatedCount = 0;
+    
+    for (const user of users) {
+      const normalizedEmail = normalizeEmail(user.email);
+      
+      if (user.email !== normalizedEmail) {
+        console.log(`Updating email for user ${user._id}: ${user.email} -> ${normalizedEmail}`);
+        user.email = normalizedEmail;
+        await user.save();
+        updatedCount++;
+      }
+    }
+    
+    res.json({
+      success: true,
+      message: `Normalized ${updatedCount} user emails`,
+      updatedCount
+    });
+  } catch (error) {
+    console.error('Error normalizing emails:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to normalize emails'
     });
   }
 });
@@ -299,7 +474,25 @@ router.post('/register', validateRegister, handleValidationErrors, async (req, r
   try {
     const { name, email, phone, password, userType, age } = req.body;
 
-    const existingEmail = await User.findOne({ email });
+    // Normalize email to handle Gmail dot variations
+    const normalizedEmail = normalizeEmail(email);
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+    if (!emailRegex.test(normalizedEmail)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email format",
+      });
+    }
+
+    console.log(`Registration attempt for email: ${email} (normalized: ${normalizedEmail})`);
+
+    const existingEmail = await User.findOne({
+  $or: [
+    { email: normalizedEmail },
+    { email: email.toLowerCase().trim() }
+  ]
+});
     if (existingEmail) {
       return res.status(400).json({
         success: false,
@@ -319,13 +512,13 @@ router.post('/register', validateRegister, handleValidationErrors, async (req, r
     const hashedPassword = await bcrypt.hash(password, salt);
 
     const user = new User({
-      name,
-      email,
-      phone,
-      password: hashedPassword,
-      userType,
-      age
-    });
+  name,
+  email: email.toLowerCase().trim(), // ✅ store ORIGINAL
+  phone,
+  password: hashedPassword,
+  userType,
+  age
+});
 
     await user.save();
 
@@ -361,13 +554,19 @@ router.post('/login', validateLogin, handleValidationErrors, async (req, res) =>
   try {
     const { email, password } = req.body;
     
-    // console.log(`=== LOGIN ATTEMPT ===`);
-    // console.log(`Email: ${email}`);
-    // console.log(`Password length: ${password?.length || 0}`);
-
+    // Normalize email to handle Gmail dot variations
+    const normalizedEmail = normalizeEmail(email);
+    
+    console.log(`Login attempt for email: ${email} (normalized: ${normalizedEmail})`);
+    
     // Find user by email with password field
-    const user = await User.findOne({ email }).select('+password');
-
+    // const user = await User.findOne({ email: normalizedEmail }).select('+password');
+const user = await User.findOne({
+  $or: [
+    { email: normalizedEmail },
+    { email: email.toLowerCase().trim() }
+  ]
+}).select('+password');
     if (!user) {
       // console.log(`Login failed: User not found for email: ${email}`);
       return res.status(401).json({

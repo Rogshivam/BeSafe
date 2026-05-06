@@ -184,6 +184,24 @@ app.get('/api/health', async (req, res) => {
   }
 });
 app.use('/uploads', express.static('uploads'));
+
+// Test email endpoint
+app.post('/test-email', async (req, res) => {
+  try {
+    const notificationService = (await import('./services/notificationService.js')).default;
+    const result = await notificationService.sendTestEmail();
+    
+    if (result) {
+      res.json({ success: true, message: 'Test email sent successfully' });
+    } else {
+      res.json({ success: false, message: 'Failed to send test email' });
+    }
+  } catch (error) {
+    console.error('Test email error:', error);
+    res.status(500).json({ success: false, message: 'Error sending test email', error: error.message });
+  }
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
@@ -204,14 +222,14 @@ app.use('*', (req, res) => {
 const PORT = process.env.PORT || 5000;
 
 // Connect to MongoDB and start server
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => {
-    console.log('Connected to MongoDB');
-  })
-  .catch((error) => {
-    console.error('Database connection error:', error);
-    console.warn('Server continuing without MongoDB - some features may not work');
-    // Don't exit, continue running server for testing
+mongoose.connect(process.env.MONGODB_URI, {
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+})
+  .then(() => console.log('✅ MongoDB connected'))
+  .catch((err) => {
+    console.error('❌ MongoDB connection error:', err.message);
+    console.log('Server continuing without MongoDB - some features may not work');
   });
 
 server.listen(PORT, () => {

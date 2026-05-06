@@ -38,8 +38,43 @@ const Register = () => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleRegister = async (e: any) => {
+ 
+const handleRegister = async (e: any) => {
   e.preventDefault();
+
+//   const cleanedEmail = form.email.trim().toLowerCase();
+
+//   // ✅ Strong email regex
+//   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// if (cleanedEmail.split("@")[0].endsWith(".")) {
+//   toast.error("Invalid email format");
+//   return;
+// }
+//   if (!emailRegex.test(cleanedEmail)) {
+//     toast.error("Invalid email format");
+//     return;
+//   }
+const cleanedEmail = form.email.trim().toLowerCase();
+
+if (!cleanedEmail.includes("@")) {
+  toast.error("Email must contain @");
+  return;
+}
+
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+if (!emailRegex.test(cleanedEmail)) {
+  toast.error("Invalid email format");
+  return;
+}
+
+  if (!cleanedEmail.includes(".")) {
+    toast.error("Email must contain a domain (e.g. .com)");
+    return;
+  }
+
+  // ✅ Debug log (IMPORTANT)
+  // console.log("Sending email:", cleanedEmail);
 
   try {
     const res = await fetch(`${apiUrl}/auth/register`, {
@@ -49,6 +84,7 @@ const Register = () => {
       },
       body: JSON.stringify({
         ...form,
+        email: cleanedEmail, // ✅ use cleaned email
         age: Number(form.age),
         userType: roleMap[selectedRole],
       }),
@@ -56,7 +92,6 @@ const Register = () => {
 
     const data = await res.json();
 
-    // ❗ API error handling
     if (!res.ok) {
       toast.error(data?.message || "Registration failed");
       return;
@@ -76,7 +111,6 @@ const Register = () => {
 
   } catch (error) {
     console.error(error);
-
     toast.error("Server error. Please try again.");
   }
 };
@@ -140,9 +174,9 @@ const Register = () => {
                   <label className="text-sm font-medium text-foreground mb-1 block">Email</label>
                   <input
                     name="email"
-                    type="email"
-                    placeholder="user@besafe.com"
-                    onChange={handleChange}
+  type="email"
+  placeholder="example@gmail.com"
+  onChange={handleChange}
                     className="w-full px-4 py-3 rounded-xl border border-border bg-secondary/50 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm"
                     required
                   />
