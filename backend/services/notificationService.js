@@ -10,11 +10,7 @@ class NotificationService {
   }
 
   initialize() {
-    console.log('Initializing email service...');
-    console.log('EMAIL_USER:', process.env.EMAIL_USER ? 'SET' : 'NOT SET');
-    console.log('EMAIL_PASS:', process.env.EMAIL_PASS ? 'SET' : 'NOT SET');
-    console.log('EMAIL_HOST:', process.env.EMAIL_HOST || 'smtp.gmail.com');
-    console.log('EMAIL_PORT:', process.env.EMAIL_PORT || '587');
+
 
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
       console.warn("EMAIL_USER / EMAIL_PASS not set; email service disabled");
@@ -31,20 +27,20 @@ class NotificationService {
       },
     });
 
-    console.log('Email transporter created successfully');
+    
   }
 
   async sendPasswordResetEmail(email, resetToken) {
-    console.log('sendPasswordResetEmail called for:', email);
+    // console.log('sendPasswordResetEmail called for:', email);
     
     if (!this.emailTransporter || !process.env.EMAIL_USER) {
-      console.log("Email service not configured");
+      // console.log("Email service not configured");
       return false;
     }
 
     const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
     const resetLink = `${clientUrl}/reset-password/${resetToken}`;
-    console.log('Reset link:', resetLink);
+    // console.log('Reset link:', resetLink);
 
     const html = `
       <!DOCTYPE html>
@@ -76,9 +72,18 @@ class NotificationService {
     };
 
     try {
-      const info = await this.emailTransporter.sendMail(mailOptions);
-      console.log("Email sent:", info.messageId);
-      return true;
+      // const info = await this.emailTransporter.sendMail(mailOptions);
+      
+      // return true;
+      this.emailTransporter.sendMail(mailOptions)
+  .then(info => {
+    // console.log("Email sent:", info.messageId);
+  })
+  .catch(err => {
+    console.error("Email error:", err);
+  });
+
+return true; // return immediately
     } catch (error) {
       console.error("Email send error:", error);
       return false;
@@ -100,10 +105,7 @@ class NotificationService {
 
       // Send email notification
       if (user.email && user.preferences?.emailNotifications) {
-        console.log('📧 Sending relationship notification email to:', user.email);
-        console.log('📧 Email transporter available:', !!this.emailTransporter);
-        console.log('📧 EMAIL_USER configured:', process.env.EMAIL_USER ? 'SET' : 'NOT SET');
-        
+       
         if (!this.emailTransporter) {
           console.error('❌ Email transporter not initialized - skipping email send');
           return false;
@@ -138,7 +140,7 @@ class NotificationService {
           // Send email asynchronously without blocking
           this.emailTransporter.sendMail(mailOptions)
             .then(info => {
-              console.log(`Relationship notification email sent to ${user.email}:`, info.messageId);
+              // console.log(`Relationship notification email sent to ${user.email}:`, info.messageId);
             })
             .catch(error => {
               console.error('Error sending relationship notification email:', error);
@@ -282,7 +284,7 @@ class NotificationService {
         // Send email without blocking emergency response
         this.emailTransporter.sendMail(mailOptions)
           .then(info => {
-            console.log(`SOS emergency email sent to ${parentEmail}:`, info.messageId);
+            // console.log(`SOS emergency email sent to ${parentEmail}:`, info.messageId);
           })
           .catch(error => {
             console.error('Error sending SOS email:', error);
@@ -300,7 +302,7 @@ class NotificationService {
 
   // Test email function for debugging
   async sendTestEmail(toEmail = process.env.EMAIL_USER) {
-    console.log('🧪 Sending test email to:', toEmail);
+    // console.log('🧪 Sending test email to:', toEmail);
     
     if (!this.emailTransporter) {
       console.error('❌ Email transporter not initialized');
@@ -324,8 +326,8 @@ class NotificationService {
 
     try {
       const info = await this.emailTransporter.sendMail(testMailOptions);
-      console.log('✅ Test email sent successfully:', info.messageId);
-      console.log('✅ Preview URL:', nodemailer.getTestMessageUrl(info));
+      // console.log('✅ Test email sent successfully:', info.messageId);
+      // console.log('✅ Preview URL:', nodemailer.getTestMessageUrl(info));
       return true;
     } catch (error) {
       console.error('❌ Test email failed:', error);

@@ -9,6 +9,12 @@ import {
   validateLogin,
   handleValidationErrors
 } from '../middleware/validation.js';
+import rateLimit from 'express-rate-limit';
+
+const forgotLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+});
 
 const router = express.Router();
 
@@ -63,13 +69,13 @@ function normalizeEmail(email) {
 }
 // FORGOT PASSWORD (send reset token)
 
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', forgotLimiter, async (req, res) => {
   const { email } = req.body;
 
   // Normalize email to handle Gmail dot variations
   const normalizedEmail = normalizeEmail(email);
 
-  console.log(`Forgot password request for email: ${email} (normalized: ${normalizedEmail})`);
+  // console.log(`Forgot password request for email: ${email} (normalized: ${normalizedEmail})`);
 
   if (!email) {
     // console.log('Forgot password failed: Email required');
@@ -93,7 +99,7 @@ router.post('/forgot-password', async (req, res) => {
   } catch (dbError) {
     console.error('MongoDB error finding user:', dbError.message);
     // For testing purposes, allow email sending even if MongoDB fails
-    console.log('Proceeding with email send for testing (MongoDB unavailable)');
+    // console.log('Proceeding with email send for testing (MongoDB unavailable)');
   }
 
   // Generate reset token (always generate for testing)
@@ -105,27 +111,19 @@ router.post('/forgot-password', async (req, res) => {
 
   // If user found and MongoDB is working, save reset token and send email
   if (user) {
-    console.log(`Forgot password: User found - ${user.name} (${user._id})`);
+    // console.log(`Forgot password: User found - ${user.name} (${user._id})`);
     user.resetPasswordToken = hashedToken;
     user.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 minutes
     
     try {
       await user.save();
-      console.log(`Reset token saved for user: ${user._id}`);
+      // console.log(`Reset token saved for user: ${user._id}`);
 
       // Send password reset email
       const notificationService = (await import('../services/notificationService.js')).default;
-      const emailSent = await notificationService.sendPasswordResetEmail(
-  user.email,
-  resetToken
-);
-      // const emailSent = await notificationService.sendPasswordResetEmail(email, resetToken);
 await notificationService.sendPasswordResetEmail(user.email, resetToken);
-      if (emailSent) {
-        console.log(`✅ Password reset email sent to: ${email}`);
-      } else {
-        console.log(`❌ Failed to send password reset email to: ${email}`);
-      }
+
+// console.log(`📧 Password reset email triggered for: ${email}`);
 
       res.json({
         success: true,
@@ -145,7 +143,7 @@ await notificationService.sendPasswordResetEmail(user.email, resetToken);
       });
     }
   } else {
-    console.log(`Forgot password: User not found for email: ${email}`);
+    // console.log(`Forgot password: User not found for email: ${email}`);
     res.json({
       success: true,
       message: 'If this email exists, a reset link has been sent',
@@ -158,14 +156,14 @@ router.put('/reset-password/:token', async (req, res) => {
   const { token } = req.params;
   const { password } = req.body;
 
-  console.log(`=== PASSWORD RESET START ===`);
-  console.log(`Token: ${token}`);
-  console.log(`Password length: ${password?.length || 0}`);
-  console.log(`Request body:`, req.body);
+  // console.log(`=== PASSWORD RESET START ===`);
+  // console.log(`Token: ${token}`);
+  // console.log(`Password length: ${password?.length || 0}`);
+  // console.log(`Request body:`, req.body);
 
   // Validate password
   if (!password || password.length < 6) {
-    console.log('Password reset failed: Password too short');
+    // console.log('Password reset failed: Password too short');
     return res.status(400).json({
       success: false,
       message: 'Password must be at least 6 characters',
@@ -178,7 +176,7 @@ router.put('/reset-password/:token', async (req, res) => {
     .update(token)
     .digest('hex');
 
-  console.log(`Looking for user with hashed token: ${hashedToken.substring(0, 10)}...`);
+  // console.log(`Looking for user with hashed token: ${hashedToken.substring(0, 10)}...`);
 
   // Find user with valid reset token with retry logic
   let user;
@@ -197,14 +195,14 @@ router.put('/reset-password/:token', async (req, res) => {
       retryCount++;
       
       if (retryCount < maxRetries) {
-        console.log(`Retrying in 1 second...`);
+        // console.log(`Retrying in 1 second...`);
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
   }
 
   if (!user) {
-    console.log('Password reset failed: Invalid or expired token (or MongoDB unavailable)');
+    // console.log('Password reset failed: Invalid or expired token (or MongoDB unavailable)');
     return res.status(400).json({
       success: false,
       message: 'Invalid or expired token. Please request a new password reset link.',
@@ -212,16 +210,16 @@ router.put('/reset-password/:token', async (req, res) => {
     });
   }
 
-  console.log(`Password reset for user: ${user.name} (${user._id})`);
-  console.log(`User has reset token: ${!!user.resetPasswordToken}`);
-  console.log(`Reset token expires: ${user.resetPasswordExpire ? new Date(user.resetPasswordExpire).toISOString() : 'none'}`);
+  // console.log(`Password reset for user: ${user.name} (${user._id})`);
+  // console.log(`User has reset token: ${!!user.resetPasswordToken}`);
+  // console.log(`Reset token expires: ${user.resetPasswordExpire ? new Date(user.resetPasswordExpire).toISOString() : 'none'}`);
 
   try {
     // Hash new password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     
-    console.log(`Generated new password hash length: ${hashedPassword.length}`);
+    // console.log(`Generated new password hash length: ${hashedPassword.length}`);
     
     // Update user password and clear reset token with retry logic
     let updateResult;
@@ -246,7 +244,7 @@ router.put('/reset-password/:token', async (req, res) => {
         updateRetryCount++;
         
         if (updateRetryCount < maxUpdateRetries) {
-          console.log(`Retrying update in 1 second...`);
+          // console.log(`Retrying update in 1 second...`);
           await new Promise(resolve => setTimeout(resolve, 1000));
         } else {
           throw updateError; // Re-throw after max retries
@@ -254,7 +252,7 @@ router.put('/reset-password/:token', async (req, res) => {
       }
     }
 
-    console.log(`Update result: ${updateResult.modifiedCount} documents modified`);
+    // console.log(`Update result: ${updateResult.modifiedCount} documents modified`);
 
     // Verify the update worked by fetching the user again with retry
     let updatedUser;
@@ -270,7 +268,7 @@ router.put('/reset-password/:token', async (req, res) => {
         verifyRetryCount++;
         
         if (verifyRetryCount < maxVerifyRetries) {
-          console.log(`Retrying verification in 1 second...`);
+          // console.log(`Retrying verification in 1 second...`);
           await new Promise(resolve => setTimeout(resolve, 1000));
         } else {
           throw verifyError;
@@ -278,11 +276,11 @@ router.put('/reset-password/:token', async (req, res) => {
       }
     }
     
-    console.log(`Verification - User found: ${updatedUser ? 'Yes' : 'No'}, Password hash length: ${updatedUser?.password?.length || 0}`);
+    // console.log(`Verification - User found: ${updatedUser ? 'Yes' : 'No'}, Password hash length: ${updatedUser?.password?.length || 0}`);
 
     // Test the new password immediately
     const testPasswordValid = await bcrypt.compare(password, updatedUser.password);
-    console.log(`New password test: ${testPasswordValid}`);
+    // console.log(`New password test: ${testPasswordValid}`);
 
     if (!testPasswordValid) {
       throw new Error('Password verification failed after update');
@@ -297,7 +295,7 @@ router.put('/reset-password/:token', async (req, res) => {
 
   } catch (error) {
     console.error('Error updating password:', error);
-    console.log(`=== PASSWORD RESET FAILED ===`);
+    // console.log(`=== PASSWORD RESET FAILED ===`);
     res.status(500).json({
       success: false,
       message: 'Failed to update password. Please try again.',
@@ -342,7 +340,7 @@ router.post('/debug/normalize-emails', async (req, res) => {
       const normalizedEmail = normalizeEmail(user.email);
       
       if (user.email !== normalizedEmail) {
-        console.log(`Updating email for user ${user._id}: ${user.email} -> ${normalizedEmail}`);
+        // console.log(`Updating email for user ${user._id}: ${user.email} -> ${normalizedEmail}`);
         user.email = normalizedEmail;
         await user.save();
         updatedCount++;
@@ -485,7 +483,7 @@ router.post('/register', validateRegister, handleValidationErrors, async (req, r
       });
     }
 
-    console.log(`Registration attempt for email: ${email} (normalized: ${normalizedEmail})`);
+    // console.log(`Registration attempt for email: ${email} (normalized: ${normalizedEmail})`);
 
     const existingEmail = await User.findOne({
   $or: [
@@ -557,7 +555,7 @@ router.post('/login', validateLogin, handleValidationErrors, async (req, res) =>
     // Normalize email to handle Gmail dot variations
     const normalizedEmail = normalizeEmail(email);
     
-    console.log(`Login attempt for email: ${email} (normalized: ${normalizedEmail})`);
+    // console.log(`Login attempt for email: ${email} (normalized: ${normalizedEmail})`);
     
     // Find user by email with password field
     // const user = await User.findOne({ email: normalizedEmail }).select('+password');
@@ -582,7 +580,7 @@ const user = await User.findOne({
 
     // Check if user is active
     if (!user.isActive) {
-      console.log(`Login failed: Account deactivated for user: ${user._id}`);
+      // console.log(`Login failed: Account deactivated for user: ${user._id}`);
       return res.status(401).json({
         success: false,
         message: 'Account is deactivated'
@@ -645,7 +643,7 @@ const user = await User.findOne({
     });
   } catch (error) {
     console.error('Login error:', error);
-    console.log(`=== LOGIN FAILED ===`);
+    // console.log(`=== LOGIN FAILED ===`);
     res.status(500).json({
       success: false,
       message: 'Server error during login'

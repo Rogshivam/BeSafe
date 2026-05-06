@@ -226,12 +226,12 @@ mongoose.connect(process.env.MONGODB_URI, {
   serverSelectionTimeoutMS: 5000,
   socketTimeoutMS: 45000,
 })
-  .then(() => console.log('✅ MongoDB connected'))
+  .then(() => console.log('✅ connected'))
   .catch((err) => {
     console.error('❌ MongoDB connection error:', err.message);
     console.log('Server continuing without MongoDB - some features may not work');
   });
 
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server running on port`);
 });

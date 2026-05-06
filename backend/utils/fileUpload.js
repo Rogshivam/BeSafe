@@ -17,7 +17,7 @@ if (cloudinaryConfigured) {
     api_key: process.env.CLOUDINARY_API_KEY,
     api_secret: process.env.CLOUDINARY_API_SECRET,
   });
-  console.log('Cloudinary configured successfully');
+  // console.log('Cloudinary configured successfully');
 } else {
   console.warn('Cloudinary credentials not found. Using local storage as fallback.');
 }

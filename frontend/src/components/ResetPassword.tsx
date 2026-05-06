@@ -156,7 +156,7 @@ const ResetPassword = () => {
                   onClick={testToken}
                   className="text-xs text-muted-foreground hover:text-primary underline"
                 >
-                  Debug: Test Token
+                  Test Token
                 </button>
                 <br />
                 <button
@@ -164,7 +164,7 @@ const ResetPassword = () => {
                   onClick={verifyPasswordUpdate}
                   className="text-xs text-muted-foreground hover:text-primary underline"
                 >
-                  Debug: Verify Password (After Reset)
+                  Verify Password 
                 </button>
               </div>
               <form onSubmit={handleReset} className="space-y-4 w-96">

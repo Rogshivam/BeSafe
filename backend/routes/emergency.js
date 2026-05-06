@@ -203,7 +203,7 @@ router.post(
             notified: true
           });
         } else {
-          console.warn('Emergency contact has null memberId, skipping notification:', contact);
+          // console.warn('Emergency contact has null memberId, skipping notification:', contact);
         }
       }
 

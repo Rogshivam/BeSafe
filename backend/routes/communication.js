@@ -141,7 +141,7 @@ router.post('/send',
           const publicId = req.file.public_id || req.file.filename;
           const resourceType = getResourceType(req.file.path || req.file.secure_url);
           await deleteCloudinaryFile(publicId, resourceType);
-          console.log('Deleted orphaned Cloudinary file:', publicId);
+          // console.log('Deleted orphaned Cloudinary file:', publicId);
         } catch (deleteError) {
           console.error('Failed to delete orphaned Cloudinary file:', deleteError);
         }
