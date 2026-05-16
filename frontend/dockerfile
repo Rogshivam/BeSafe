@@ -1,27 +1,24 @@
-# ---------- Stage 1: Build ----------
-FROM nginx:alpine AS builder
+# ---------- Build Stage ----------
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y ca-certificates openssl
-RUN update-ca-certificates
-
-ENV NODE_OPTIONS=--openssl-legacy-provider
-
-RUN npm config set fetch-retries 5 \
- && npm config set fetch-retry-mintimeout 20000 \
- && npm config set fetch-retry-maxtimeout 120000
-
 COPY package*.json ./
 
-RUN npm ci
+RUN npm install
 
 COPY . .
 
+ARG VITE_API_URL
+ARG VITE_SOCKET_URL
+
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_SOCKET_URL=$VITE_SOCKET_URL
+
 RUN npm run build
 
-# ---------- Production ----------
-FROM nginx:alpine 
+# ---------- Production Stage ----------
+FROM node:20-alpine
 
 WORKDIR /app
 
@@ -32,3 +29,4 @@ COPY --from=builder /app/dist ./dist
 EXPOSE 5173
 
 CMD ["serve", "-s", "dist", "-l", "5173"]
+

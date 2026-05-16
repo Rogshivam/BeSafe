@@ -1,31 +1,39 @@
-version: "3.9"
-
 services:
   backend:
-    image: shivamdevthakur/besafe-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
+
     container_name: besafe-backend
+
     ports:
       - "5000:5000"
+
     env_file:
       - ./backend/.env
+
     environment:
       - NODE_ENV=production
+
     networks:
       - besafenet
 
   frontend:
-    image: shivamdevthakur/besafe-frontend:latest
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: https://besafe.shivamdev.info/api
+        VITE_SOCKET_URL: https://besafe.shivamdev.info
+
     container_name: besafe-frontend
+
     ports:
       - "5173:5173"
+
     depends_on:
       - backend
+
     networks:
       - besafenet
 
