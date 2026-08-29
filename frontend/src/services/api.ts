@@ -541,6 +541,11 @@ export const evidenceAPI = {
       }
     }
   },
+
+  delete: async (evidenceId: string) => {
+    const res = await api.delete(`/evidence/${evidenceId}`);
+    return res.data;
+  },
 };
 
 // Location API

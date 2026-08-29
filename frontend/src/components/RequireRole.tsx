@@ -3,22 +3,24 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 
-type Role = "adult" | "parent" | "child";
+type Role = "adult" | "parent" | "child" | "individual" | "member";
 
 interface RequireRoleProps {
   allowedRoles: Role[];
   pageName?: string;
 }
 
-const prettyRole = (role: string | null) => {
-  if (role === "adult") return "adult";
-  if (role === "child") return "child";
-  if (role === "parent") return "parent";
-  return "guest";
+const normalizeRole = (role: string | null | undefined): string => {
+  if (!role) return "guest";
+  const lower = role.toLowerCase();
+  if (lower === "individual" || lower === "adult" || lower === "member") return "adult";
+  if (lower === "parent") return "parent";
+  if (lower === "child") return "child";
+  return lower;
 };
 
 const prettyAllowedRoles = (roles: Role[]) => {
-  return roles.join(" or ");
+  return roles.map(r => normalizeRole(r)).filter((v, i, a) => a.indexOf(v) === i).join(" or ");
 };
 
 const RequireRole = ({ allowedRoles, pageName = "this page" }: RequireRoleProps) => {
@@ -36,16 +38,22 @@ const RequireRole = ({ allowedRoles, pageName = "this page" }: RequireRoleProps)
       return;
     }
 
-    if (!role || !allowedRoles.includes(role)) {
+    const currentNormalizedRole = normalizeRole(role);
+    const normalizedAllowed = allowedRoles.map(r => normalizeRole(r));
+
+    if (!role || !normalizedAllowed.includes(currentNormalizedRole)) {
       toast.error(
-        `You can't access ${pageName} because you are logged in as ${prettyRole(role)}. Only ${prettyAllowedRoles(allowedRoles)} can access it.`
+        `You can't access ${pageName} because you are logged in as ${currentNormalizedRole}. Only ${prettyAllowedRoles(allowedRoles)} can access it.`
       );
       navigate("/dashboard/select", { replace: true });
     }
   }, [isAuthenticated, role, allowedRoles, pageName, navigate, location]);
 
+  const currentNormalizedRole = normalizeRole(role);
+  const normalizedAllowed = allowedRoles.map(r => normalizeRole(r));
+
   if (!isAuthenticated) return null;
-  if (!role || !allowedRoles.includes(role)) return null;
+  if (!role || !normalizedAllowed.includes(currentNormalizedRole)) return null;
 
   return <Outlet />;
 };

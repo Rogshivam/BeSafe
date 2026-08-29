@@ -5,6 +5,8 @@ import { ShieldCheck, User, Users, Baby, Eye, EyeOff } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
 import { useAuth } from '@/context/AuthContext';
 import CurrentDate from '@/components/Date';
+import { toast } from 'sonner';
+
 type Role = 'adult' | 'parent' | 'child';
 
 const roles: { value: Role; label: string; icon: typeof User }[] = [
@@ -12,12 +14,21 @@ const roles: { value: Role; label: string; icon: typeof User }[] = [
   { value: 'parent', label: 'Parent', icon: Users },
   { value: 'child', label: 'Child', icon: Baby },
 ];
-const roleMap: any = {
+
+const roleMap: Record<Role, string> = {
   adult: "Individual",
   parent: "Parent",
   child: "Child"
 };
+
 const apiUrl = import.meta.env.VITE_API_URL;
+
+const normalizeRole = (type: string): 'adult' | 'parent' | 'child' => {
+  const lower = (type || '').toLowerCase();
+  if (lower === 'parent') return 'parent';
+  if (lower === 'child') return 'child';
+  return 'adult';
+};
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -28,68 +39,60 @@ const Login = () => {
   const navigate = useNavigate();
   const { setRole, setUserName } = useAuth();
 
- const handleLogin = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setIsLoading(true);
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
 
-  try {
-    // Use enhanced request manager with retry logic
-    const response = await fetch(`${apiUrl}/auth/login`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        email,
-        password
-      })
-    });
+    try {
+      const response = await fetch(`${apiUrl}/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          password,
+          userType: roleMap[selectedRole]
+        })
+      });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        toast.error(data?.message || 'Login failed. Please check your credentials and role.');
+        return;
+      }
+
+      // Save token
+      localStorage.setItem("token", data.data.token);
+
+      // Save user data to localStorage
+      localStorage.setItem("user", JSON.stringify(data.data.user));
+
+      // Save user info to context using normalized role
+      const normalizedRole = normalizeRole(data.data.user.userType);
+      setRole(normalizedRole);
+      setUserName(data.data.user.name);
+      localStorage.setItem("role", normalizedRole);
+      localStorage.setItem("userName", data.data.user.name);
+
+      toast.success(`Welcome back, ${data.data.user.name}!`);
+
+      // Redirect to the corresponding dashboard
+      navigate(`/dashboard/${normalizedRole}`);
+
+    } catch (error: any) {
+      console.error('Login error:', error);
+      
+      if (error.name === 'TypeError' || error.message?.includes('Failed to fetch')) {
+        toast.error('Network error. Please check your connection and ensure the server is running.');
+      } else {
+        toast.error(error.message || 'Login failed. Please try again.');
+      }
+    } finally {
+      setIsLoading(false);
     }
-
-    const data = await response.json();
-
-    if (!data.success) {
-      alert(data.message || 'Login failed');
-      return;
-    }
-
-    // Save token
-    localStorage.setItem("token", data.data.token);
-
-    // Save user data to localStorage
-    localStorage.setItem("user", JSON.stringify(data.data.user));
-
-    // Save user info to context using actual userType from backend
-    const actualRole = data.data.user.userType.toLowerCase();
-    setRole(actualRole as 'parent' | 'child' | 'adult' | 'member' | 'individual');
-    setUserName(data.data.user.name);
-
-    // Redirect using actual role
-    navigate(`/dashboard/${actualRole}`);
-
-  } catch (error: any) {
-    console.error('Login error:', error);
-    
-    // Handle different types of errors
-    if (error.name === 'TypeError' || error.message?.includes('Failed to fetch')) {
-      alert('Network error. Please check your internet connection and try again.');
-    } else if (error.message?.includes('401')) {
-      alert('Invalid email or password. Please try again.');
-    } else if (error.message?.includes('429')) {
-      alert('Too many login attempts. Please wait a moment before trying again.');
-    } else if (error.message?.includes('500')) {
-      alert('Server error. Please try again later.');
-    } else {
-      alert(error.message || 'Login failed. Please try again.');
-    }
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
 
   return (
     <div className="min-h-screen bg-background">

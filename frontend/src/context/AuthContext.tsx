@@ -27,6 +27,14 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
+const normalizeRole = (type: string | null | undefined): Role => {
+  if (!type) return null;
+  const lower = type.toLowerCase();
+  if (lower === 'parent') return 'parent';
+  if (lower === 'child') return 'child';
+  return 'adult';
+};
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [role, setRoleState] = useState<Role>(null);
   const [userName, setUserNameState] = useState("");
@@ -40,32 +48,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const savedUserName = localStorage.getItem("userName") || "";
 
       // If we have stored user data, restore it immediately
-      if (savedUser && savedRole && savedUserName) {
-        const userData = JSON.parse(savedUser);
-        const actualRole = userData.userType.toLowerCase() as Role;
-        setRoleState(actualRole);
-        setUserNameState(userData.name);
-        
-        // Then try to validate token in background
-        if (token) {
-          try {
-            const response = await authAPI.getCurrentUser();
-            if (response.success) {
-              // Token is valid, update stored role if needed
-              if (actualRole !== savedRole) {
-                localStorage.setItem("role", actualRole);
-                localStorage.setItem("userName", userData.name);
+      if (savedUser) {
+        try {
+          const userData = JSON.parse(savedUser);
+          const actualRole = normalizeRole(userData.userType);
+          setRoleState(actualRole);
+          setUserNameState(userData.name || savedUserName || "");
+          
+          // Then try to validate token in background
+          if (token) {
+            try {
+              const response = await authAPI.getCurrentUser();
+              if (response.success) {
+                // Token is valid, update stored role if needed
+                if (actualRole && actualRole !== savedRole) {
+                  localStorage.setItem("role", actualRole);
+                  localStorage.setItem("userName", userData.name);
+                }
+              } else {
+                console.warn('Token validation failed, keeping user session');
+                localStorage.removeItem("token");
               }
-            } else {
-              // Token is invalid, but keep user session for better UX
-              console.warn('Token validation failed, keeping user session');
+            } catch (error) {
+              console.warn('Token validation error:', error);
               localStorage.removeItem("token");
             }
-          } catch (error) {
-            // Token validation failed, but keep user session for better UX
-            console.warn('Token validation error:', error);
-            localStorage.removeItem("token");
           }
+        } catch (e) {
+          console.error('Error parsing stored user data:', e);
+          logout();
         }
       } else {
         // No stored user data, ensure logged out state
@@ -78,9 +89,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const setRole = (newRole: Role) => {
-    setRoleState(newRole);
-    if (newRole) {
-      localStorage.setItem("role", newRole);
+    const normalized = normalizeRole(newRole);
+    setRoleState(normalized);
+    if (normalized) {
+      localStorage.setItem("role", normalized);
     } else {
       localStorage.removeItem("role");
     }

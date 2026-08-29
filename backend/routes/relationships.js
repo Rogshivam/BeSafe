@@ -105,7 +105,7 @@ router.post('/request', auth, validateRelationshipRequest, async (req, res) => {
 
     // Determine who is parent and who is child based on relationship type and user roles
     let parentId, childId;
-    
+
     if (relationshipType === 'parent-child') {
       // For parent-child: parent is always parentId, child is always childId
       parentId = userRole === 'parent' ? userId : targetUserId;
@@ -119,11 +119,11 @@ router.post('/request', auth, validateRelationshipRequest, async (req, res) => {
       parentId = userRole === 'parent' ? userId : targetUserId;
       childId = userRole === 'parent' ? targetUserId : userId;
     }
-    
+
     // Map user role to initiatedBy enum values
     const initiatedByRole = userRole === 'parent' ? 'parent' :
       userRole === 'child' ? 'child' : 'adult';
-    
+
     const relationship = new Relationship({
       parentId,
       childId,
@@ -395,22 +395,22 @@ router.delete('/:relationshipId/terminate', auth, async (req, res) => {
     const reason = req.body?.reason || '';
     const userId = req.user.id;
 
-    console.log('Termination request:', { relationshipId, userId, reason });
+    // console.log('Termination request:', { relationshipId, userId, reason });
 
     if (!mongoose.Types.ObjectId.isValid(relationshipId)) {
-      console.log('Invalid ObjectId format:', relationshipId);
+      // console.log('Invalid ObjectId format:', relationshipId);
       return res.status(400).json({
         success: false,
         message: 'Invalid relationship ID'
       });
     }
 
-    console.log('Looking for relationship with ID:', relationshipId);
+    // console.log('Looking for relationship with ID:', relationshipId);
     const relationship = await Relationship.findById(relationshipId);
-    console.log('Found relationship:', relationship ? 'YES' : 'NO');
+    // console.log('Found relationship:', relationship ? 'YES' : 'NO');
 
     if (!relationship) {
-      console.log('Relationship not found in database');
+      // console.log('Relationship not found in database');
       // Debug: show all relationships for this user
       const userRelationships = await Relationship.find({
         $or: [
@@ -418,9 +418,9 @@ router.delete('/:relationshipId/terminate', auth, async (req, res) => {
           { childId: userId }
         ]
       });
-      console.log('User has relationships:', userRelationships.length);
-      console.log('User relationship IDs:', userRelationships.map(r => ({ id: r._id.toString(), status: r.status })));
-      
+      // console.log('User has relationships:', userRelationships.length);
+      // console.log('User relationship IDs:', userRelationships.map(r => ({ id: r._id.toString(), status: r.status })));
+
       return res.status(404).json({
         success: false,
         message: 'Relationship not found'
@@ -430,10 +430,10 @@ router.delete('/:relationshipId/terminate', auth, async (req, res) => {
     const parentId = relationship.parentId.toString();
     const childId = relationship.childId.toString();
 
-    console.log('Authorization check:', { parentId, childId, userId });
+    // console.log('Authorization check:', { parentId, childId, userId });
 
     if (parentId !== userId && childId !== userId) {
-      console.log('Unauthorized termination attempt');
+      // console.log('Unauthorized termination attempt');
       return res.status(403).json({
         success: false,
         message: 'Not authorized'
@@ -441,19 +441,19 @@ router.delete('/:relationshipId/terminate', auth, async (req, res) => {
     }
 
     if (relationship.status !== 'active') {
-      console.log('Relationship not active:', relationship.status);
+      // console.log('Relationship not active:', relationship.status);
       return res.status(400).json({
         success: false,
         message: 'Only active relationships can be terminated'
       });
     }
 
-  relationship.status = 'terminated';
-relationship.terminatedAt = new Date();
-relationship.terminationReason = reason;
+    relationship.status = 'terminated';
+    relationship.terminatedAt = new Date();
+    relationship.terminationReason = reason;
 
-await relationship.save();
-console.log('Relationship terminated successfully');
+    await relationship.save();
+    // console.log('Relationship terminated successfully');
 
     const otherPartyId = parentId === userId ? childId : parentId;
 
@@ -672,7 +672,7 @@ router.get('/sent', auth, async (req, res) => {
       status: 'pending',
       $or: [
         { parentId: userId, initiatedBy: 'parent' },
-    { childId: userId, initiatedBy: 'child' }
+        { childId: userId, initiatedBy: 'child' }
       ]
     }).populate('parentId childId', 'name email');
 

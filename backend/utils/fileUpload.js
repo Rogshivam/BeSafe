@@ -73,12 +73,16 @@ const audioFilter = (req, file, cb) => {
   }
 };
 
-// File filter for images and audio
+// File filter for images, audio, and video
 const mediaFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('audio/')) {
+  if (
+    file.mimetype.startsWith('image/') || 
+    file.mimetype.startsWith('audio/') || 
+    file.mimetype.startsWith('video/')
+  ) {
     cb(null, true);
   } else {
-    cb(new Error('Only image and audio files are allowed'), false);
+    cb(new Error('Only image, audio, and video files are allowed'), false);
   }
 };
 
@@ -94,7 +98,7 @@ const createCloudinaryStorage = (folder, resourceType = 'auto') => {
     params: {
       folder: folder,
       resource_type: resourceType,
-      allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp3', 'wav', 'ogg', 'm4a'],
+      allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp3', 'wav', 'ogg', 'm4a', 'mp4', 'mov', 'webm'],
       public_id: (req, file) => {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         return `${file.fieldname}-${uniqueSuffix}`;

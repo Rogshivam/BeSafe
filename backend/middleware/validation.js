@@ -37,7 +37,12 @@ const validateLogin = [
   
   body('password')
     .notEmpty()
-    .withMessage('Password is required')
+    .withMessage('Password is required'),
+
+  body('userType')
+    .optional()
+    .isString()
+    .withMessage('User type must be a string')
 ];
 
 const validateEmergencyContact = [

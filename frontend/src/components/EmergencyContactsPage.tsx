@@ -13,6 +13,7 @@ import {
   CheckCheck,
   MoreVertical,
   User,
+  Users,
 } from "lucide-react";
 import { BottomNav } from "@/components/BottomNav";
 import { motion } from "framer-motion";
@@ -507,26 +508,28 @@ export default function EmergencyContactsPage() {
       <DashboardSidebar />
 
       <main className="flex-1 p-6 lg:p-8 overflow-auto">
-        <div className="max-w-6xl mx-auto space-y-6 pl-10">
-          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-            <h1 className="text-2xl font-bold text-foreground mb-1">
-              Emergency Contacts
-            </h1>
-            <p className="text-muted-foreground text-sm">
-              Quick access to your safety network
-            </p>
+        <div className="max-w-6xl mx-auto space-y-6">
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground mb-1 flex items-center gap-2">
+                <Users className="w-6 h-6 text-primary" /> Emergency Contacts
+              </h1>
+              <p className="text-muted-foreground text-sm">
+                Quick access to your safety network
+              </p>
+            </div>
+
+            {/* Add Contact Button */}
+            <button
+              onClick={() => setShowAdd(true)}
+              className="flex items-center gap-2 px-4 py-2.5 gradient-primary text-primary-foreground rounded-xl text-sm font-semibold shadow-md hover:scale-105 active:scale-95 transition-all"
+            >
+              <UserPlus className="w-4 h-4" /> Add Contact
+            </button>
           </motion.div>
         </div>
 
-        <div className="max-w-lg mx-auto px-4 py-4 space-y-3 relative">
-
-          {/* Top Right Add Button */}
-          <button
-            onClick={() => setShowAdd(true)}
-            className="absolute top-[-47px] right-[-13.6rem] z-30 w-11 h-11 rounded-full gradient-primary text-primary-foreground shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
-          >
-            <UserPlus className="w-5 h-5" />
-          </button>
+        <div className="max-w-xl mx-auto px-4 py-4 space-y-3">
           <button
             onClick={sendBulkAlert}
             disabled={!contacts.length}

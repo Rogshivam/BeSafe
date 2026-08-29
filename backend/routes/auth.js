@@ -550,37 +550,27 @@ router.post('/register', validateRegister, handleValidationErrors, async (req, r
 // Login user
 router.post('/login', validateLogin, handleValidationErrors, async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, userType } = req.body;
     
     // Normalize email to handle Gmail dot variations
     const normalizedEmail = normalizeEmail(email);
     
-    // console.log(`Login attempt for email: ${email} (normalized: ${normalizedEmail})`);
-    
     // Find user by email with password field
-    // const user = await User.findOne({ email: normalizedEmail }).select('+password');
-const user = await User.findOne({
-  $or: [
-    { email: normalizedEmail },
-    { email: email.toLowerCase().trim() }
-  ]
-}).select('+password');
+    const user = await User.findOne({
+      $or: [
+        { email: normalizedEmail },
+        { email: email.toLowerCase().trim() }
+      ]
+    }).select('+password');
     if (!user) {
-      // console.log(`Login failed: User not found for email: ${email}`);
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
       });
     }
 
-    // console.log(`User found: ${user.name} (${user._id})`);
-    // console.log(`User active: ${user.isActive}`);
-    // console.log(`Password hash exists: ${!!user.password}`);
-    // console.log(`Password hash length: ${user.password?.length || 0}`);
-
     // Check if user is active
     if (!user.isActive) {
-      // console.log(`Login failed: Account deactivated for user: ${user._id}`);
       return res.status(401).json({
         success: false,
         message: 'Account is deactivated'
@@ -588,16 +578,31 @@ const user = await User.findOne({
     }
 
     // Verify password
-    // console.log(`Verifying password for user: ${user._id}`);
     const isPasswordValid = await bcrypt.compare(password, user.password);
-    // console.log(`Password verification result: ${isPasswordValid}`);
 
     if (!isPasswordValid) {
-      // console.log(`Login failed: Invalid password for user: ${user._id}`);
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
       });
+    }
+
+    // Check role if userType was selected/provided during login
+    if (userType) {
+      const selected = userType.toLowerCase();
+      const actual = (user.userType || '').toLowerCase();
+      const isMatch = (selected === actual) || 
+        (selected === 'adult' && (actual === 'individual' || actual === 'adult' || actual === 'member')) ||
+        (selected === 'individual' && (actual === 'individual' || actual === 'adult' || actual === 'member'));
+
+      if (!isMatch) {
+        const displayActual = user.userType === 'Individual' ? 'Adult' : user.userType;
+        const displaySelected = (userType === 'Individual' || userType.toLowerCase() === 'adult') ? 'Adult' : userType;
+        return res.status(400).json({
+          success: false,
+          message: `Role mismatch: This account is registered as "${displayActual}", but you selected "${displaySelected}". Please select "${displayActual}" to login.`
+        });
+      }
     }
 
     // console.log(`Login successful for user: ${user._id}`);

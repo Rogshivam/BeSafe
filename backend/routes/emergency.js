@@ -748,9 +748,11 @@ const childUser = await User.findById(childId).select('name');
           mediaType: e.image
             ? 'image'
             : e.audioRecording
-              ? 'video'
+              ? 'audio'
               : undefined,
           mediaName: e.image || e.audioRecording,
+          image: e.image,
+          audioRecording: e.audioRecording,
           childName: e.individualId?.name || 'Unknown'
         };
       } catch (err) {
@@ -772,9 +774,11 @@ const childUser = await User.findById(childId).select('name');
           mediaType: e.image
             ? 'image'
             : e.audioRecording
-              ? 'video'
+              ? 'audio'
               : undefined,
           mediaName: e.image || e.audioRecording,
+          image: e.image,
+          audioRecording: e.audioRecording,
           childName: e.individualId?.name || 'Unknown'
         };
       }
@@ -1056,9 +1060,11 @@ router.get('/history/:userId', auth, async (req, res) => {
           mediaType: e.image
             ? 'image'
             : e.audioRecording
-              ? 'video'
+              ? 'audio'
               : undefined,
-          mediaName: e.image || e.audioRecording
+          mediaName: e.image || e.audioRecording,
+          image: e.image,
+          audioRecording: e.audioRecording
         };
       } catch (err) {
         console.error('Error processing incident:', e._id, err);
@@ -1079,9 +1085,11 @@ router.get('/history/:userId', auth, async (req, res) => {
           mediaType: e.image
             ? 'image'
             : e.audioRecording
-              ? 'video'
+              ? 'audio'
               : undefined,
-          mediaName: e.image || e.audioRecording
+          mediaName: e.image || e.audioRecording,
+          image: e.image,
+          audioRecording: e.audioRecording
         };
       }
     }));
