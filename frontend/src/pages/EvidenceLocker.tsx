@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { DashboardSidebar } from '@/components/DashboardSidebar';
+import { BottomNav } from '@/components/BottomNav';
 import { ChatbotWidget } from '@/components/ChatbotWidget';
 import { 
   Camera, 
@@ -17,10 +18,13 @@ import {
   Calendar,
   Layers,
   Image as ImageIcon,
-  AlertTriangle
+  AlertTriangle,
+  Search,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { evidenceAPI } from '@/services/api';
 import { toast } from 'sonner';
 
@@ -32,13 +36,12 @@ const getFullUrl = (fileUrl?: string) => {
   return fileUrl.startsWith('http') ? fileUrl : `${BASE_URL}${fileUrl}`;
 };
 
-// Helper to get compressed thumbnail URL (Cloudinary auto-format & quality optimization)
+// Ultra-fast compressed thumbnail URL (Cloudinary auto-format, quality optimization, and dimension bounds)
 const getCompressedImageUrl = (fileUrl?: string) => {
   if (!fileUrl) return '';
   const full = getFullUrl(fileUrl);
-  // Apply Cloudinary on-the-fly compression if hosted on Cloudinary
   if (full.includes('cloudinary.com') && full.includes('/upload/')) {
-    return full.replace('/upload/', '/upload/w_500,c_limit,q_auto:eco,f_auto/');
+    return full.replace('/upload/', '/upload/w_450,c_limit,q_auto:eco,f_auto/');
   }
   return full;
 };
@@ -216,11 +219,22 @@ const EvidenceThumbnail = ({ item, onClick }: { item: any; onClick: () => void }
 const EvidenceLocker = () => {
   const { role } = useAuth();
 
-  const [evidence, setEvidence] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Initialize from sessionStorage cache for instant 0ms load
+  const [evidence, setEvidence] = useState<any[]>(() => {
+    try {
+      const cached = sessionStorage.getItem(`besafe_evidence_cache_${role || 'user'}`);
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [loading, setLoading] = useState(() => evidence.length === 0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [children, setChildren] = useState<any[]>([]);
   const [selectedChild, setSelectedChild] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<string>('All');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeModalItem, setActiveModalItem] = useState<any | null>(null);
 
   // Popup Dialog States for Errors and Confirmations
@@ -228,84 +242,99 @@ const EvidenceLocker = () => {
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async (isManualRefresh = false) => {
     try {
-      setLoading(true);
+      if (isManualRefresh || evidence.length === 0) {
+        setLoading(true);
+      }
+      setIsRefreshing(true);
 
-      // Fetch children if user is a parent
+      // Fast parallel fetch for parents
+      const promises: Promise<any>[] = [];
+
       if (role === 'parent') {
-        try {
-          const childrenRes = await evidenceAPI.getChildren();
-          setChildren(childrenRes.data?.children || []);
-        } catch (err: any) {
-          setErrorDialog({
-            title: 'Family Members Notice',
-            message: err.message || 'Could not retrieve family member list. Some evidence may still be accessible.',
-            onRetry: fetchData
-          });
-        }
+        promises.push(
+          evidenceAPI.getChildren().then(res => {
+            const list = res.data?.children || [];
+            setChildren(list);
+            return list;
+          }).catch(err => {
+            console.error('Children fetch error:', err);
+            return [];
+          })
+        );
       }
 
-      // Fetch evidence based on selected child or own evidence with retry logic
-      let evidenceRes;
-      let retryCount = 0;
-      const maxRetries = 3;
-      
-      while (retryCount < maxRetries) {
+      // Fetch evidence based on selection
+      const evidencePromise = (role === 'parent' && selectedChild)
+        ? evidenceAPI.getChildEvidence(selectedChild)
+        : evidenceAPI.getAll();
+
+      promises.push(evidencePromise);
+
+      const results = await Promise.allSettled(promises);
+      const evidenceResult = results[results.length - 1];
+
+      if (evidenceResult.status === 'fulfilled') {
+        const data = evidenceResult.value?.data || [];
+        setEvidence(data);
         try {
-          if (role === 'parent' && selectedChild) {
-            evidenceRes = await evidenceAPI.getChildEvidence(selectedChild);
-          } else {
-            evidenceRes = await evidenceAPI.getAll();
-          }
-          
-          setEvidence(evidenceRes.data || []);
-          break;
-        } catch (err: any) {
-          if (err.message?.includes('Too many requests')) {
-            retryCount++;
-            const waitTime = Math.pow(2, retryCount) * 1000;
-            if (retryCount < maxRetries) {
-              await new Promise(resolve => setTimeout(resolve, waitTime));
-              continue;
-            }
-          }
-          
-          setEvidence([]);
-          setErrorDialog({
-            title: 'Evidence Loading Error',
-            message: err.message || 'Failed to load evidence records from the server. Please check your network connection.',
-            onRetry: fetchData
-          });
-          break;
-        }
+          sessionStorage.setItem(`besafe_evidence_cache_${role || 'user'}_${selectedChild || 'all'}`, JSON.stringify(data));
+        } catch {}
+      } else {
+        throw evidenceResult.reason;
       }
     } catch (err: any) {
-      setErrorDialog({
-        title: 'Error Fetching Evidence',
-        message: err.message || 'An unexpected error occurred while loading evidence files.',
-        onRetry: fetchData
-      });
+      if (evidence.length === 0) {
+        setErrorDialog({
+          title: 'Evidence Loading Notice',
+          message: err.message || 'Could not refresh latest evidence records. Please check your network connection.',
+          onRetry: () => fetchData(true)
+        });
+      }
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
-  };
+  }, [role, selectedChild, evidence.length]);
 
   useEffect(() => {
+    // Check if child-specific cache exists
+    try {
+      const cached = sessionStorage.getItem(`besafe_evidence_cache_${role || 'user'}_${selectedChild || 'all'}`);
+      if (cached) {
+        setEvidence(JSON.parse(cached));
+        setLoading(false);
+      }
+    } catch {}
     fetchData();
   }, [role, selectedChild]);
 
-  // Filter evidence based on selected tab
+  // Real-time Search and Type Filter
   const filteredEvidence = useMemo(() => {
-    if (selectedType === 'All') return evidence;
+    const q = searchQuery.toLowerCase().trim();
+
     return evidence.filter((item) => {
-      if (selectedType === 'Photos') return item.type === 'Photo';
-      if (selectedType === 'Audio') return item.type === 'Audio';
-      if (selectedType === 'Screenshots') return item.type === 'Screen';
-      if (selectedType === 'Locations') return item.type === 'Location';
+      // Type Filter
+      if (selectedType === 'Photos' && item.type !== 'Photo') return false;
+      if (selectedType === 'Audio' && item.type !== 'Audio') return false;
+      if (selectedType === 'Screenshots' && item.type !== 'Screen') return false;
+      if (selectedType === 'Locations' && item.type !== 'Location') return false;
+
+      // Search Query Filter
+      if (q) {
+        const matchTitle = (item.title || '').toLowerCase().includes(q);
+        const matchType = (item.type || '').toLowerCase().includes(q);
+        const matchChild = (item.childName || '').toLowerCase().includes(q);
+        const matchAddress = (item.location?.address || '').toLowerCase().includes(q);
+        const matchDate = new Date(item.createdAt).toLocaleDateString().toLowerCase().includes(q);
+
+        return matchTitle || matchType || matchChild || matchAddress || matchDate;
+      }
+
       return true;
     });
-  }, [evidence, selectedType]);
+  }, [evidence, selectedType, searchQuery]);
 
   const handleView = (item: any) => {
     setActiveModalItem(item);
@@ -324,12 +353,10 @@ const EvidenceLocker = () => {
     toast.success('Download started');
   };
 
-  // Open confirmation dialog before deleting
   const promptDelete = (evidenceId: string) => {
     setDeleteTargetId(evidenceId);
   };
 
-  // Execute deletion after confirmation
   const confirmDelete = async () => {
     if (!deleteTargetId) return;
 
@@ -337,7 +364,13 @@ const EvidenceLocker = () => {
       setIsDeleting(true);
       await evidenceAPI.delete(deleteTargetId);
       toast.success('Evidence deleted successfully');
-      setEvidence(prev => prev.filter(item => item._id !== deleteTargetId));
+      setEvidence(prev => {
+        const updated = prev.filter(item => item._id !== deleteTargetId);
+        try {
+          sessionStorage.setItem(`besafe_evidence_cache_${role || 'user'}_${selectedChild || 'all'}`, JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
       if (activeModalItem?._id === deleteTargetId) {
         setActiveModalItem(null);
       }
@@ -370,13 +403,54 @@ const EvidenceLocker = () => {
               </p>
             </div>
 
+            {/* Quick Refresh & Status Widget */}
+            <div className="flex items-center gap-3">
+              {isRefreshing && (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 border border-primary/20 text-primary rounded-xl text-xs font-medium animate-pulse">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Syncing...</span>
+                </div>
+              )}
+              <button
+                onClick={() => fetchData(true)}
+                disabled={isRefreshing}
+                title="Refresh Evidence"
+                className="p-2.5 bg-card border border-border rounded-xl text-foreground hover:bg-secondary transition-all active:scale-95 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-primary' : ''}`} />
+              </button>
+            </div>
+          </motion.div>
+
+          {/* Search Bar & Type Filter Tabs Row */}
+          <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+            {/* Search Input */}
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search evidence by title, date, location, child..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-9 py-2.5 bg-card border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/30 outline-none shadow-sm transition-all"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
             {/* Type Filter Tabs */}
-            <div className="flex gap-1.5 p-1 bg-card border border-border rounded-xl text-xs font-medium flex-wrap shadow-sm">
+            <div className="flex gap-1 p-1 bg-card border border-border rounded-xl text-xs font-medium overflow-x-auto shadow-sm">
               {['All', 'Photos', 'Audio', 'Screenshots', 'Locations'].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setSelectedType(tab)}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                  className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition-all ${
                     selectedType === tab
                       ? 'gradient-primary text-primary-foreground shadow-sm'
                       : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
@@ -386,7 +460,7 @@ const EvidenceLocker = () => {
                 </button>
               ))}
             </div>
-          </motion.div>
+          </div>
 
           {/* Child Selection Buttons for Parents */}
           {role === 'parent' && children.length > 0 && (
@@ -440,7 +514,20 @@ const EvidenceLocker = () => {
             </motion.div>
           )}
 
-          {/* Loading state with skeletons */}
+          {/* Search Result Count when searching */}
+          {searchQuery && (
+            <div className="text-xs text-muted-foreground flex items-center justify-between">
+              <span>Found {filteredEvidence.length} matching {filteredEvidence.length === 1 ? 'record' : 'records'} for "{searchQuery}"</span>
+              <button 
+                onClick={() => setSearchQuery('')}
+                className="text-primary hover:underline text-xs"
+              >
+                Clear Search
+              </button>
+            </div>
+          )}
+
+          {/* Loading Skeleton State */}
           {loading && (
             <div className="grid md:grid-cols-3 gap-6">
               {[1, 2, 3, 4, 5, 6].map((n) => (
@@ -465,10 +552,20 @@ const EvidenceLocker = () => {
               </div>
               <h3 className="font-bold text-foreground text-lg">No Evidence Found</h3>
               <p className="text-sm text-muted-foreground">
-                {selectedType !== 'All' 
-                  ? `No evidence items found for filter "${selectedType}".`
-                  : 'Capture photos, audio recordings, or screenshots from the dashboard to store evidence here.'}
+                {searchQuery 
+                  ? `No evidence matches the search query "${searchQuery}".`
+                  : selectedType !== 'All' 
+                    ? `No evidence items found for filter "${selectedType}".`
+                    : 'Capture photos, audio recordings, or screenshots from the dashboard to store evidence here.'}
               </p>
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="px-4 py-2 bg-secondary text-foreground rounded-xl text-xs font-semibold hover:bg-secondary/80 mt-2"
+                >
+                  Reset Search
+                </button>
+              )}
             </div>
           )}
 
@@ -478,9 +575,9 @@ const EvidenceLocker = () => {
               {filteredEvidence.map((item, i) => (
                 <motion.div
                   key={item._id || i}
-                  initial={{ opacity: 0, y: 20 }}
+                  initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.05 }}
+                  transition={{ delay: Math.min(i * 0.03, 0.3) }}
                   className="bg-card rounded-2xl shadow-depth border border-border overflow-hidden hover:shadow-depth-hover hover:-translate-y-1 transition-all flex flex-col"
                 >
                   {/* Media Thumbnail with compressed rendering */}
@@ -770,6 +867,7 @@ const EvidenceLocker = () => {
         )}
       </AnimatePresence>
 
+      <BottomNav />
       <ChatbotWidget role={(role === 'adult' || role === 'parent' || role === 'child') ? role : 'adult'} />
     </div>
   );

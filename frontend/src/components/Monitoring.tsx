@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { DashboardSidebar } from '@/components/DashboardSidebar';
+import { BottomNav } from '@/components/BottomNav';
 import { ChatbotWidget } from '@/components/ChatbotWidget';
 import { MapWidget } from '@/components/MapWidget';
 import { MonitoringCard } from '@/components/MonitoringCard';
@@ -149,6 +150,7 @@ const Monitoring = () => {
           </div>
         </div>
       </main>
+      <BottomNav />
       <ChatbotWidget role="parent" />
     </div>
   );

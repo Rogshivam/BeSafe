@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { DashboardSidebar } from '@/components/DashboardSidebar';
+import { BottomNav } from '@/components/BottomNav';
 import { LiveMap } from '@/components/LiveMap';
 import { ChatbotWidget } from '@/components/ChatbotWidget';
 import { EmergencyContacts } from '@/components/EmergencyContacts';
@@ -397,6 +398,7 @@ const ChildDashboard = () => {
           </div>
         </div>
       </main>
+      <BottomNav />
       <ChatbotWidget role="child" />
     </div>
   );

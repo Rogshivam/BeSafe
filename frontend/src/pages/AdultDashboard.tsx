@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { DashboardSidebar } from '@/components/DashboardSidebar';
+import { BottomNav } from '@/components/BottomNav';
 import { RiskMeter } from '@/components/RiskMeter';
 import { ActivityLog } from '@/components/ActivityLog';
 import { QuickActions } from '@/components/QuickActions';
@@ -417,6 +418,7 @@ const AdultDashboard = () => {
           <QuickActions />
         </div>
       </main>
+      <BottomNav />
       <ChatbotWidget role="adult" />
     </div>
   );

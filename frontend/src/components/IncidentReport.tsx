@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Plus, X, MapPin, Clock, CheckCircle,
   AlertCircle, Upload, Image as ImageIcon, Video, Users,
-  Volume2, FileText, Eye, Download, Navigation
+  Volume2, FileText, Eye, Download, Navigation, Search, RefreshCw, Loader2
 } from 'lucide-react';
 import { BottomNav } from '@/components/BottomNav';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,11 +18,12 @@ const getFullUrl = (fileUrl?: string) => {
   return fileUrl.startsWith('http') ? fileUrl : `${BASE_URL}${fileUrl}`;
 };
 
+// Ultra-fast compressed thumbnail URL for Cloudinary
 const getCompressedImageUrl = (fileUrl?: string) => {
   if (!fileUrl) return '';
   const full = getFullUrl(fileUrl);
   if (full.includes('cloudinary.com') && full.includes('/upload/')) {
-    return full.replace('/upload/', '/upload/w_600,c_limit,q_auto:eco,f_auto/');
+    return full.replace('/upload/', '/upload/w_450,c_limit,q_auto:eco,f_auto/');
   }
   return full;
 };
@@ -46,9 +47,23 @@ interface Incident {
 export default function IncidentReport() {
   const { role } = useAuth();
 
-  const [incidents, setIncidents] = useState<Incident[]>([]);
+  // Initialize from sessionStorage cache for instant 0ms render
+  const [incidents, setIncidents] = useState<Incident[]>(() => {
+    try {
+      const cached = sessionStorage.getItem(`besafe_incidents_cache_${role || 'user'}`);
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [loading, setLoading] = useState(() => incidents.length === 0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Resolved'>('All');
+
   const [showForm, setShowForm] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [editIncident, setEditIncident] = useState<Incident | null>(null);
   const [previewMedia, setPreviewMedia] = useState<{ url: string; title: string; type: string } | null>(null);
@@ -64,21 +79,51 @@ export default function IncidentReport() {
   // Child selection state for parents
   const [children, setChildren] = useState<any[]>([]);
   const [selectedChild, setSelectedChild] = useState<string | null>(null);
-  const [loadingChildren, setLoadingChildren] = useState(false);
 
-  // Fetch incidents based on selected child or own incidents
-  const fetchIncidents = async () => {
+  const detectMediaType = (url?: string, explicitType?: string) => {
+    if (!url) return null;
+    const lower = url.toLowerCase();
+    if (
+      explicitType === 'image' || 
+      lower.includes('/image/') || 
+      lower.match(/\.(jpeg|jpg|png|gif|webp|svg|bmp|avif)(\?.*)?$/) ||
+      lower.includes('image-')
+    ) {
+      return 'image';
+    }
+    if (
+      explicitType === 'audio' || 
+      lower.includes('/audio/') || 
+      lower.match(/\.(mp3|wav|ogg|m4a|aac|webm)(\?.*)?$/) ||
+      lower.includes('audio-')
+    ) {
+      return 'audio';
+    }
+    if (
+      explicitType === 'video' || 
+      lower.includes('/video/') || 
+      lower.match(/\.(mp4|mov|avi|mkv)(\?.*)?$/) ||
+      lower.includes('video-')
+    ) {
+      return 'video';
+    }
+    return 'file';
+  };
+
+  // Fetch incidents with fast caching
+  const fetchIncidents = useCallback(async (isManualRefresh = false) => {
     try {
+      if (isManualRefresh || incidents.length === 0) {
+        setLoading(true);
+      }
+      setIsRefreshing(true);
+
       if (role === 'parent') {
-        setLoadingChildren(true);
-        try {
-          const childrenRes = await emergencyAPI.getChildren();
-          setChildren(childrenRes.data?.children || []);
-        } catch (err) {
+        emergencyAPI.getChildren().then(res => {
+          setChildren(res.data?.children || []);
+        }).catch(err => {
           console.error('Error fetching children:', err);
-        } finally {
-          setLoadingChildren(false);
-        }
+        });
       }
 
       let res;
@@ -87,36 +132,6 @@ export default function IncidentReport() {
       } else {
         res = await emergencyAPI.getEmergencyHistory();
       }
-
-      const detectMediaType = (url?: string, explicitType?: string) => {
-        if (!url) return null;
-        const lower = url.toLowerCase();
-        if (
-          explicitType === 'image' || 
-          lower.includes('/image/') || 
-          lower.match(/\.(jpeg|jpg|png|gif|webp|svg|bmp|avif)(\?.*)?$/) ||
-          lower.includes('image-')
-        ) {
-          return 'image';
-        }
-        if (
-          explicitType === 'audio' || 
-          lower.includes('/audio/') || 
-          lower.match(/\.(mp3|wav|ogg|m4a|aac|webm)(\?.*)?$/) ||
-          lower.includes('audio-')
-        ) {
-          return 'audio';
-        }
-        if (
-          explicitType === 'video' || 
-          lower.includes('/video/') || 
-          lower.match(/\.(mp4|mov|avi|mkv)(\?.*)?$/) ||
-          lower.includes('video-')
-        ) {
-          return 'video';
-        }
-        return 'file';
-      };
 
       const mapped: Incident[] = (res.data?.emergencies || []).map((e: any) => {
         const candidateUrl = e.image || e.audioRecording || e.mediaName || e.mediaUrl;
@@ -150,15 +165,54 @@ export default function IncidentReport() {
       });
 
       setIncidents(mapped);
+      try {
+        sessionStorage.setItem(`besafe_incidents_cache_${role || 'user'}_${selectedChild || 'all'}`, JSON.stringify(mapped));
+      } catch {}
     } catch (err: any) {
       console.error('Failed to fetch incidents:', err);
-      toast.error('Failed to load incident reports');
+      if (incidents.length === 0) {
+        toast.error('Failed to load incident reports');
+      }
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
     }
-  };
+  }, [role, selectedChild, incidents.length]);
 
   useEffect(() => {
+    try {
+      const cached = sessionStorage.getItem(`besafe_incidents_cache_${role || 'user'}_${selectedChild || 'all'}`);
+      if (cached) {
+        setIncidents(JSON.parse(cached));
+        setLoading(false);
+      }
+    } catch {}
     fetchIncidents();
   }, [role, selectedChild]);
+
+  // Real-time Search and Status Filtering
+  const filteredIncidents = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+
+    return incidents.filter((inc) => {
+      if (statusFilter !== 'All' && inc.status !== statusFilter) {
+        return false;
+      }
+
+      if (q) {
+        const matchTitle = (inc.title || '').toLowerCase().includes(q);
+        const matchDesc = (inc.description || '').toLowerCase().includes(q);
+        const matchLoc = (inc.location || '').toLowerCase().includes(q);
+        const matchChild = (inc.childName || '').toLowerCase().includes(q);
+        const matchStatus = (inc.status || '').toLowerCase().includes(q);
+        const matchDate = new Date(inc.timestamp).toLocaleDateString().toLowerCase().includes(q);
+
+        return matchTitle || matchDesc || matchLoc || matchChild || matchStatus || matchDate;
+      }
+
+      return true;
+    });
+  }, [incidents, statusFilter, searchQuery]);
 
   // Submit report
   const handleSubmit = async () => {
@@ -168,7 +222,7 @@ export default function IncidentReport() {
     }
 
     try {
-      setLoading(true);
+      setSubmitting(true);
 
       await emergencyAPI.triggerEmergency(
         {
@@ -187,7 +241,7 @@ export default function IncidentReport() {
       );
 
       toast.success('Incident report created successfully');
-      await fetchIncidents();
+      await fetchIncidents(true);
 
       setForm({ title: '', description: '', location: '' });
       setSelectedFile(null);
@@ -196,7 +250,7 @@ export default function IncidentReport() {
       console.error('Submit error:', err);
       toast.error(`Failed to submit report: ${err.message || 'Unknown error'}`);
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -254,13 +308,17 @@ export default function IncidentReport() {
       await emergencyAPI.updateEmergencyStatus(incident.id, newStatus);
       toast.success(`Marked as ${newStatus}`);
 
-      setIncidents(prev =>
-        prev.map(i =>
+      setIncidents(prev => {
+        const updated = prev.map(i =>
           i.id === incident.id
             ? { ...i, status: newStatus }
             : i
-        )
-      );
+        );
+        try {
+          sessionStorage.setItem(`besafe_incidents_cache_${role || 'user'}_${selectedChild || 'all'}`, JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
 
       if (selectedIncident?.id === incident.id) {
         setSelectedIncident(prev => prev ? { ...prev, status: newStatus } : null);
@@ -287,7 +345,7 @@ export default function IncidentReport() {
       await emergencyAPI.updateEmergency(editIncident.id, formData);
       toast.success('Incident updated successfully');
 
-      await fetchIncidents();
+      await fetchIncidents(true);
       setEditIncident(null);
       setSelectedFile(null);
     } catch (err: any) {
@@ -303,7 +361,7 @@ export default function IncidentReport() {
       <main className="flex-1 p-6 lg:p-8 overflow-auto">
         <div className="max-w-6xl mx-auto space-y-6">
 
-          {/* Consistent Header & Aligned Add Button */}
+          {/* Header */}
           <motion.div 
             initial={{ opacity: 0, y: -10 }} 
             animate={{ opacity: 1, y: 0 }} 
@@ -318,14 +376,71 @@ export default function IncidentReport() {
               </p>
             </div>
 
-            {/* Consistent Header Action Button */}
-            <button
-              onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 px-4 py-2.5 gradient-primary text-primary-foreground rounded-xl text-sm font-semibold shadow-md hover:scale-105 active:scale-95 transition-all shrink-0"
-            >
-              <Plus className="w-4 h-4" /> Add Incident Report
-            </button>
+            {/* Actions & Refresh */}
+            <div className="flex items-center gap-2.5">
+              {isRefreshing && (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 border border-primary/20 text-primary rounded-xl text-xs font-medium animate-pulse">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Syncing...</span>
+                </div>
+              )}
+              <button
+                onClick={() => fetchIncidents(true)}
+                disabled={isRefreshing}
+                title="Refresh Reports"
+                className="p-2.5 bg-card border border-border rounded-xl text-foreground hover:bg-secondary transition-all active:scale-95 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-primary' : ''}`} />
+              </button>
+
+              <button
+                onClick={() => setShowForm(true)}
+                className="flex items-center gap-2 px-4 py-2.5 gradient-primary text-primary-foreground rounded-xl text-sm font-semibold shadow-md hover:scale-105 active:scale-95 transition-all shrink-0"
+              >
+                <Plus className="w-4 h-4" /> Add Incident Report
+              </button>
+            </div>
           </motion.div>
+
+          {/* Search Bar & Status Filter Tabs */}
+          <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+            {/* Search Input */}
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search incidents by title, description, location..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-9 py-2.5 bg-card border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/30 outline-none shadow-sm transition-all"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Status Filter Tabs */}
+            <div className="flex gap-1 p-1 bg-card border border-border rounded-xl text-xs font-medium shadow-sm">
+              {(['All', 'Active', 'Resolved'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setStatusFilter(tab)}
+                  className={`px-3.5 py-1.5 rounded-lg transition-all ${
+                    statusFilter === tab
+                      ? 'gradient-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Child Selection Buttons for Parents */}
           {role === 'parent' && children.length > 0 && (
@@ -379,152 +494,196 @@ export default function IncidentReport() {
             </motion.div>
           )}
 
+          {/* Search Result Count */}
+          {searchQuery && (
+            <div className="text-xs text-muted-foreground flex items-center justify-between">
+              <span>Found {filteredIncidents.length} matching {filteredIncidents.length === 1 ? 'incident' : 'incidents'} for "{searchQuery}"</span>
+              <button 
+                onClick={() => setSearchQuery('')}
+                className="text-primary hover:underline text-xs"
+              >
+                Clear Search
+              </button>
+            </div>
+          )}
+
+          {/* Loading Skeleton State */}
+          {loading && (
+            <div className="grid md:grid-cols-2 gap-4 max-w-5xl mx-auto">
+              {[1, 2, 3, 4].map((n) => (
+                <div key={n} className="bg-card rounded-2xl shadow-depth border border-border p-5 space-y-3 animate-pulse">
+                  <div className="flex justify-between items-center">
+                    <div className="h-5 bg-muted/60 rounded w-1/3" />
+                    <div className="h-5 bg-muted/60 rounded-full w-16" />
+                  </div>
+                  <div className="h-3 bg-muted/40 rounded w-3/4" />
+                  <div className="h-3 bg-muted/30 rounded w-1/2" />
+                  <div className="h-36 bg-muted/50 rounded-xl mt-2" />
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Empty State */}
-          {!loading && incidents.length === 0 && (
+          {!loading && filteredIncidents.length === 0 && (
             <div className="bg-card rounded-2xl shadow-depth border border-border p-12 text-center max-w-md mx-auto space-y-3">
               <div className="w-14 h-14 rounded-full bg-secondary flex items-center justify-center mx-auto text-muted-foreground">
                 <AlertCircle className="w-6 h-6" />
               </div>
-              <h3 className="font-bold text-foreground text-lg">No Incidents Reported</h3>
+              <h3 className="font-bold text-foreground text-lg">No Incidents Found</h3>
               <p className="text-sm text-muted-foreground">
-                Click the "Add Incident Report" button above to file a report.
+                {searchQuery
+                  ? `No incident reports match "${searchQuery}".`
+                  : statusFilter !== 'All'
+                    ? `No incidents currently marked as "${statusFilter}".`
+                    : 'Click "Add Incident Report" above to file a new incident.'}
               </p>
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="px-4 py-2 bg-secondary text-foreground rounded-xl text-xs font-semibold hover:bg-secondary/80 mt-2"
+                >
+                  Reset Search
+                </button>
+              )}
             </div>
           )}
 
-          {/* Incident List */}
-          <div className="grid md:grid-cols-2 gap-4 max-w-5xl mx-auto">
-            {incidents.map((inc, i) => (
-              <motion.div
-                key={inc.id || i}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.04 }}
-                onClick={() => setSelectedIncident(inc)}
-                className="bg-card rounded-2xl shadow-depth border border-border p-5 space-y-3 hover:shadow-depth-hover hover:-translate-y-0.5 transition-all cursor-pointer flex flex-col justify-between"
-              >
-                <div className="space-y-2">
-                  <div className="flex justify-between items-start gap-2">
-                    <h3 className="font-bold text-base text-foreground leading-snug">{inc.title}</h3>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleStatus(inc);
-                      }}
-                      className={`px-2.5 py-1 text-xs font-semibold rounded-full flex items-center gap-1 shrink-0 ${
-                        inc.status === 'Active'
-                          ? 'bg-destructive/15 text-destructive'
-                          : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                      }`}
-                    >
-                      {inc.status === 'Active'
-                        ? <AlertCircle className="w-3.5 h-3.5" />
-                        : <CheckCircle className="w-3.5 h-3.5" />}
-                      {inc.status}
-                    </button>
+          {/* Incident Cards List */}
+          {!loading && filteredIncidents.length > 0 && (
+            <div className="grid md:grid-cols-2 gap-4 max-w-5xl mx-auto">
+              {filteredIncidents.map((inc, i) => (
+                <motion.div
+                  key={inc.id || i}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(i * 0.03, 0.3) }}
+                  onClick={() => setSelectedIncident(inc)}
+                  className="bg-card rounded-2xl shadow-depth border border-border p-5 space-y-3 hover:shadow-depth-hover hover:-translate-y-0.5 transition-all cursor-pointer flex flex-col justify-between"
+                >
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-start gap-2">
+                      <h3 className="font-bold text-base text-foreground leading-snug">{inc.title}</h3>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleStatus(inc);
+                        }}
+                        className={`px-2.5 py-1 text-xs font-semibold rounded-full flex items-center gap-1 shrink-0 transition-colors ${
+                          inc.status === 'Active'
+                            ? 'bg-destructive/15 text-destructive hover:bg-destructive/25'
+                            : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25'
+                        }`}
+                      >
+                        {inc.status === 'Active'
+                          ? <AlertCircle className="w-3.5 h-3.5" />
+                          : <CheckCircle className="w-3.5 h-3.5" />}
+                        {inc.status}
+                      </button>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">{inc.description}</p>
+
+                    {inc.childName && (
+                      <p className="text-xs text-primary font-medium">
+                        Reported by: {inc.childName}
+                      </p>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground pt-1">
+                      <span className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5" />
+                        {formatDate(inc.timestamp)}
+                      </span>
+
+                      {inc.location && (
+                        <a
+                          href={
+                            inc.latitude && inc.longitude
+                              ? `https://www.google.com/maps?q=${inc.latitude},${inc.longitude}`
+                              : undefined
+                          }
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 hover:underline text-primary truncate max-w-[200px]"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <MapPin className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">{inc.location}</span>
+                        </a>
+                      )}
+                    </div>
                   </div>
 
-                  <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">{inc.description}</p>
+                  {/* Attached Media Wrapped Cleanly under a Title Tag */}
+                  {inc.image && (
+                    <div className="mt-2 pt-2.5 border-t border-border/60">
+                      <div className="flex items-center justify-between gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 mb-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <ImageIcon className="w-3.5 h-3.5" />
+                          <span>Image Evidence</span>
+                        </div>
+                        <span className="text-[11px] font-normal text-muted-foreground">Click to enlarge</span>
+                      </div>
 
-                  {inc.childName && (
-                    <p className="text-xs text-primary font-medium">
-                      Reported by: {inc.childName}
-                    </p>
+                      <div 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPreviewMedia({ type: 'image', url: inc.image!, title: inc.title });
+                        }}
+                        className="relative rounded-xl overflow-hidden border border-border bg-secondary/30 h-44 w-full group cursor-pointer"
+                      >
+                        <img 
+                          src={getCompressedImageUrl(inc.image)} 
+                          alt={inc.title}
+                          loading="lazy"
+                          decoding="async"
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-white text-xs font-semibold">
+                          <Eye className="w-4 h-4" /> View Full Image
+                        </div>
+                      </div>
+                    </div>
                   )}
 
-                  <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground pt-1">
-                    <span className="flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5" />
-                      {formatDate(inc.timestamp)}
-                    </span>
-
-                    {inc.location && (
-                      <a
-                        href={
-                          inc.latitude && inc.longitude
-                            ? `https://www.google.com/maps?q=${inc.latitude},${inc.longitude}`
-                            : undefined
-                        }
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 hover:underline text-primary truncate max-w-[200px]"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <MapPin className="w-3.5 h-3.5 shrink-0" />
-                        <span className="truncate">{inc.location}</span>
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                {/* Attached Media Wrapped Cleanly under a Title Tag */}
-                {inc.image && (
-                  <div className="mt-2 pt-2.5 border-t border-border/60">
-                    <div className="flex items-center justify-between gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 mb-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <ImageIcon className="w-3.5 h-3.5" />
-                        <span>Image Attachment</span>
+                  {inc.audioRecording && (
+                    <div className="mt-2 pt-2.5 border-t border-border/60" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400 mb-1.5">
+                        <Volume2 className="w-3.5 h-3.5" />
+                        <span>Audio Recording</span>
                       </div>
-                      <span className="text-[11px] font-normal text-muted-foreground">Click to enlarge</span>
-                    </div>
-
-                    <div 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPreviewMedia({ type: 'image', url: inc.image!, title: inc.title });
-                      }}
-                      className="relative rounded-xl overflow-hidden border border-border bg-secondary/30 h-44 w-full group cursor-pointer"
-                    >
-                      <img 
-                        src={getCompressedImageUrl(inc.image)} 
-                        alt={inc.title}
-                        loading="lazy"
-                        decoding="async"
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      <audio 
+                        controls 
+                        preload="metadata" 
+                        src={getFullUrl(inc.audioRecording)} 
+                        className="w-full h-8"
                       />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-white text-xs font-semibold">
-                        <Eye className="w-4 h-4" /> View Full Image
+                    </div>
+                  )}
+
+                  {inc.mediaName && !inc.image && !inc.audioRecording && (
+                    <div className="mt-2 pt-2.5 border-t border-border/60" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-purple-600 dark:text-purple-400">
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>Attached Document</span>
+                        </div>
+                        <a 
+                          href={getFullUrl(inc.mediaName)} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="text-xs font-medium text-primary hover:underline flex items-center gap-1"
+                        >
+                          <Eye className="w-3 h-3" /> View File
+                        </a>
                       </div>
                     </div>
-                  </div>
-                )}
-
-                {inc.audioRecording && (
-                  <div className="mt-2 pt-2.5 border-t border-border/60" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400 mb-1.5">
-                      <Volume2 className="w-3.5 h-3.5" />
-                      <span>Audio Recording</span>
-                    </div>
-                    <audio 
-                      controls 
-                      preload="metadata" 
-                      src={getFullUrl(inc.audioRecording)} 
-                      className="w-full h-8"
-                    />
-                  </div>
-                )}
-
-                {inc.mediaName && !inc.image && !inc.audioRecording && (
-                  <div className="mt-2 pt-2.5 border-t border-border/60" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-between gap-1.5">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-purple-600 dark:text-purple-400">
-                        <FileText className="w-3.5 h-3.5" />
-                        <span>Attached Document</span>
-                      </div>
-                      <a 
-                        href={getFullUrl(inc.mediaName)} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="text-xs font-medium text-primary hover:underline flex items-center gap-1"
-                      >
-                        <Eye className="w-3 h-3" /> View File
-                      </a>
-                    </div>
-                  </div>
-                )}
-              </motion.div>
-            ))}
-          </div>
+                  )}
+                </motion.div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Create Incident Modal */}
@@ -623,11 +782,11 @@ export default function IncidentReport() {
                   </button>
                   <button
                     type="button"
-                    disabled={loading}
+                    disabled={submitting}
                     onClick={handleSubmit}
                     className="px-5 py-2.5 gradient-primary text-primary-foreground rounded-xl text-xs font-semibold shadow-md hover:opacity-90 active:scale-95 transition-all disabled:opacity-50"
                   >
-                    {loading ? 'Submitting...' : 'Submit Report'}
+                    {submitting ? 'Submitting...' : 'Submit Report'}
                   </button>
                 </div>
               </motion.div>

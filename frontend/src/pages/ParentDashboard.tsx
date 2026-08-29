@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { DashboardSidebar } from '@/components/DashboardSidebar';
+import { BottomNav } from '@/components/BottomNav';
 // import { MapWidget } from '@/components/MapWidget';
 import { LiveMap } from '@/components/LiveMap';
 import { ActivityLog } from '@/components/ActivityLog';
@@ -310,6 +311,7 @@ const ParentDashboard = () => {
           <QuickActions />
         </div>
       </main>
+      <BottomNav />
       <ChatbotWidget role="parent" />
     </div>
   );

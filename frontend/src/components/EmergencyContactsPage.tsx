@@ -14,11 +14,25 @@ import {
   MoreVertical,
   User,
   Users,
+  Shield,
+  ShieldAlert,
+  HeartPulse,
+  Flame,
+  Lock,
+  LifeBuoy,
+  Car,
+  Copy,
+  PhoneCall,
+  Sparkles,
+  Building2,
+  Radio,
+  ExternalLink
 } from "lucide-react";
 import { BottomNav } from "@/components/BottomNav";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { DashboardSidebar } from "./DashboardSidebar";
 import { communicationAPI, chatRequestAPI } from "@/services/api";
+import { toast } from "sonner";
 
 interface SearchUser {
   _id: string;
@@ -45,12 +59,116 @@ interface EmergencyContact {
   createdAt?: string;
 }
 
+interface PublicEmergencyService {
+  id: string;
+  name: string;
+  category: 'Police & Crime' | 'Medical' | 'Fire & Rescue' | 'Women & Child' | 'Cyber & Theft' | 'Disaster & Safety';
+  number: string;
+  description: string;
+  icon: any;
+  color: string;
+  badge: string;
+}
+
+const PUBLIC_EMERGENCY_SERVICES: PublicEmergencyService[] = [
+  {
+    id: 'national-emergency',
+    name: 'National Emergency Helpline (All-in-One)',
+    category: 'Police & Crime',
+    number: '112',
+    description: 'Unified single emergency response for Police, Fire, Medical, and Disaster distress.',
+    icon: ShieldAlert,
+    color: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20',
+    badge: 'Unified 24/7'
+  },
+  {
+    id: 'police',
+    name: 'Police Control Room & Thief Report',
+    category: 'Police & Crime',
+    number: '100',
+    description: 'Immediate police squad dispatch, theft reporting, robbery, violence, and criminal incidents.',
+    icon: Shield,
+    color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
+    badge: 'Police & Crime'
+  },
+  {
+    id: 'ambulance',
+    name: 'Ambulance & Medical Emergency',
+    category: 'Medical',
+    number: '108',
+    description: 'Critical healthcare trauma, cardiac emergency, acute illness, and rapid ambulance dispatch.',
+    icon: HeartPulse,
+    color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+    badge: 'Medical EMT'
+  },
+  {
+    id: 'fire',
+    name: 'Fire & Rescue Brigade',
+    category: 'Fire & Rescue',
+    number: '101',
+    description: 'Fire breakouts, building rescue, gas leaks, electrical fires, and hazard containment.',
+    icon: Flame,
+    color: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20',
+    badge: 'Fire Brigade'
+  },
+  {
+    id: 'cyber-crime',
+    name: 'Cyber Crime & Financial Theft Helpline',
+    category: 'Cyber & Theft',
+    number: '1930',
+    description: 'National portal for reporting online theft, bank fraud, account hacking, and digital extortion.',
+    icon: Lock,
+    color: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20',
+    badge: 'Cyber Fraud'
+  },
+  {
+    id: 'women-helpline',
+    name: 'Women Distress & Safety Helpline',
+    category: 'Women & Child',
+    number: '1091',
+    description: '24/7 rapid emergency assistance for women in distress, harassment, stalking, or domestic abuse.',
+    icon: Users,
+    color: 'bg-pink-500/10 text-pink-600 dark:text-pink-400 border-pink-500/20',
+    badge: 'Women Safety'
+  },
+  {
+    id: 'child-helpline',
+    name: 'Child Protection & Safety Helpline',
+    category: 'Women & Child',
+    number: '1098',
+    description: 'Child distress response, missing children, physical violence, and emergency care.',
+    icon: LifeBuoy,
+    color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+    badge: 'Child Care'
+  },
+  {
+    id: 'disaster-ndrf',
+    name: 'Disaster Management & Relief (NDRF)',
+    category: 'Disaster & Safety',
+    number: '1078',
+    description: 'National Disaster Response Force for floods, earthquakes, building collapse, and storms.',
+    icon: AlertTriangle,
+    color: 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20',
+    badge: 'NDRF Relief'
+  },
+  {
+    id: 'road-accident',
+    name: 'Road Accident & Highway Emergency',
+    category: 'Medical',
+    number: '1073',
+    description: 'Highway rescue, road accident trauma response, and emergency vehicle assistance.',
+    icon: Car,
+    color: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
+    badge: 'Highway Patrol'
+  }
+];
+
 const relationColors: Record<string, string> = {
-  Parent: "bg-primary/10 text-primary",
-  Guardian: "bg-[hsl(var(--safe))]/10 text-[hsl(var(--safe))]",
-  Friend: "bg-accent/10 text-accent",
-  Spouse: "bg-pink-500/10 text-pink-500",
-  Sibling: "bg-orange-500/10 text-orange-500",
+  Parent: "bg-primary/10 text-primary border border-primary/20",
+  Guardian: "bg-[hsl(var(--safe))]/10 text-[hsl(var(--safe))] border border-[hsl(var(--safe))]/20",
+  Friend: "bg-accent/10 text-accent border border-accent/20",
+  Spouse: "bg-pink-500/10 text-pink-500 border border-pink-500/20",
+  Sibling: "bg-orange-500/10 text-orange-500 border border-orange-500/20",
   Other: "bg-muted text-muted-foreground",
 };
 
@@ -63,6 +181,11 @@ export default function EmergencyContactsPage() {
   const [error, setError] = useState("");
   const [alertSent, setAlertSent] = useState(false);
 
+  // Search & Filter State
+  const [contactSearchQuery, setContactSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<'all' | 'personal' | 'public'>('all');
+
+  // Add Contact Modal State
   const [showAdd, setShowAdd] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchUser[]>([]);
@@ -119,116 +242,114 @@ export default function EmergencyContactsPage() {
       });
 
       const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to load contacts");
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || "Failed to fetch emergency contacts");
+      setContacts(data.data.emergencyContacts || []);
+
+      // Check chat status for each contact
+      if (data.data.emergencyContacts) {
+        data.data.emergencyContacts.forEach((contact: EmergencyContact) => {
+          checkChatPermission(contact.memberId._id, contact._id);
+        });
       }
-
-      setContacts(data.data?.emergencyContacts || []);
     } catch (err: any) {
-      setError(err.message || "Failed to load emergency contacts");
+      console.error(err);
+      setError(err.message || "Something went wrong");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchContacts();
-    
-    // Cleanup interval on unmount
-    return () => {
-      if (refreshInterval) {
-        clearInterval(refreshInterval);
-      }
-    };
-  }, [refreshInterval]);
-
-  // Check chat eligibility for all contacts
-  useEffect(() => {
-    const checkChatEligibility = async () => {
-      if (contacts.length === 0) return;
-      
-      const checks = contacts.map(async (contact) => {
-        try {
-          setLoadingChatCheck(prev => ({ ...prev, [contact._id]: true }));
-          const response = await chatRequestAPI.canChat(contact.memberId._id);
-          setCanChatMap(prev => ({ ...prev, [contact._id]: response.data.canChat }));
-        } catch (error) {
-          console.error('Error checking chat eligibility:', error);
-          setCanChatMap(prev => ({ ...prev, [contact._id]: false }));
-        } finally {
-          setLoadingChatCheck(prev => ({ ...prev, [contact._id]: false }));
-        }
-      });
-
-      await Promise.all(checks);
-    };
-
-    checkChatEligibility();
-  }, [contacts]);
-
-  // Fetch pending chat requests
   const fetchPendingRequests = async () => {
     try {
       setLoadingRequests(true);
-      const response = await chatRequestAPI.getPendingRequests();
-      if (response.success) {
-        setPendingRequests(response.data.requests);
-      }
-    } catch (error) {
-      console.error('Failed to fetch pending requests:', error);
+      const res = await chatRequestAPI.getPendingRequests();
+      setPendingRequests(res.data?.requests || []);
+    } catch (err: any) {
+      console.error("Failed to fetch pending requests:", err);
     } finally {
       setLoadingRequests(false);
     }
   };
 
   useEffect(() => {
+    fetchContacts();
     fetchPendingRequests();
   }, []);
 
-  const searchUsers = async () => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
+  // Filtered Personal Contacts based on search query
+  const filteredPersonalContacts = useMemo(() => {
+    const q = contactSearchQuery.toLowerCase().trim();
+    if (!q) return contacts;
+
+    return contacts.filter((c) => {
+      const nameMatch = (c.memberId?.name || '').toLowerCase().includes(q);
+      const phoneMatch = (c.memberId?.phone || '').toLowerCase().includes(q);
+      const relationMatch = (c.relation || '').toLowerCase().includes(q);
+      const priorityMatch = (c.priority || '').toLowerCase().includes(q);
+      return nameMatch || phoneMatch || relationMatch || priorityMatch;
+    });
+  }, [contacts, contactSearchQuery]);
+
+  // Filtered Public Emergency Services based on search query
+  const filteredPublicServices = useMemo(() => {
+    const q = contactSearchQuery.toLowerCase().trim();
+    if (!q) return PUBLIC_EMERGENCY_SERVICES;
+
+    return PUBLIC_EMERGENCY_SERVICES.filter((service) => {
+      const nameMatch = service.name.toLowerCase().includes(q);
+      const numberMatch = service.number.toLowerCase().includes(q);
+      const catMatch = service.category.toLowerCase().includes(q);
+      const descMatch = service.description.toLowerCase().includes(q);
+      const badgeMatch = service.badge.toLowerCase().includes(q);
+      return nameMatch || numberMatch || catMatch || descMatch || badgeMatch;
+    });
+  }, [contactSearchQuery]);
+
+  // Copy phone number helper
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success(`Copied ${label} (${text}) to clipboard`);
+  };
+
+  const checkChatPermission = async (memberId: string, contactId: string) => {
+    try {
+      setLoadingChatCheck(prev => ({ ...prev, [contactId]: true }));
+      const res = await chatRequestAPI.canChatWithUser(memberId);
+      setCanChatMap(prev => ({ ...prev, [contactId]: res.data?.canChat || false }));
+    } catch (err) {
+      console.error("Failed to check chat permission:", err);
+      setCanChatMap(prev => ({ ...prev, [contactId]: false }));
+    } finally {
+      setLoadingChatCheck(prev => ({ ...prev, [contactId]: false }));
     }
+  };
+
+  const searchUsers = async () => {
+    if (!searchQuery.trim()) return;
 
     try {
       setSearching(true);
-      setError("");
-
       const res = await fetch(
         `${apiUrl}/users/search?query=${encodeURIComponent(searchQuery)}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+        { headers: authHeaders }
       );
-
       const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || "Failed to search users");
-      }
-
-      setSearchResults(data.data?.users || []);
+      if (!res.ok) throw new Error(data.message || "Failed to search users");
+      setSearchResults(data.data.users || []);
     } catch (err: any) {
-      setError(err.message || "Search failed");
+      console.error(err);
+      toast.error(err.message || "Search failed");
     } finally {
       setSearching(false);
     }
   };
 
   const addContact = async () => {
-    if (!selectedUser) {
-      setError("Please select a user");
-      return;
-    }
+    if (!selectedUser) return;
 
     try {
       setAdding(true);
-      setError("");
-
       const res = await fetch(`${apiUrl}/users/emergency-contacts`, {
         method: "POST",
         headers: authHeaders,
@@ -240,24 +361,40 @@ export default function EmergencyContactsPage() {
       });
 
       const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to add contact");
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || "Failed to add contact");
-      }
-
-      setContacts(data.data?.emergencyContacts || []);
+      toast.success("Emergency contact added successfully");
       setShowAdd(false);
       setSelectedUser(null);
       setSearchQuery("");
       setSearchResults([]);
-      setNewContact({
-        relation: "Friend",
-        priority: "High",
-      });
+      setNewContact({ relation: "Friend", priority: "High" });
+      fetchContacts();
     } catch (err: any) {
-      setError(err.message || "Could not add contact");
+      console.error(err);
+      toast.error(err.message || "Failed to add contact");
     } finally {
       setAdding(false);
+    }
+  };
+
+  const deleteContact = async (contactId: string) => {
+    if (!confirm("Are you sure you want to remove this emergency contact?")) return;
+
+    try {
+      const res = await fetch(`${apiUrl}/users/emergency-contacts/${contactId}`, {
+        method: "DELETE",
+        headers: authHeaders,
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to delete contact");
+
+      toast.success("Contact removed");
+      setContacts((prev) => prev.filter((c) => c._id !== contactId));
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to delete contact");
     }
   };
 
@@ -271,153 +408,74 @@ export default function EmergencyContactsPage() {
 
   const updateContact = async (contactId: string) => {
     try {
-      setError("");
-
       const res = await fetch(`${apiUrl}/users/emergency-contacts/${contactId}`, {
         method: "PUT",
         headers: authHeaders,
-        body: JSON.stringify({
-          relation: editForm.relation,
-          priority: editForm.priority,
-        }),
+        body: JSON.stringify(editForm),
       });
 
       const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to update contact");
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || "Failed to update contact");
-      }
-
-      setContacts(data.data?.emergencyContacts || []);
+      toast.success("Contact updated");
       setEditingContactId(null);
+      fetchContacts();
     } catch (err: any) {
-      setError(err.message || "Could not update contact");
+      console.error(err);
+      toast.error(err.message || "Failed to update contact");
     }
   };
 
-  const deleteContact = async (contactId: string) => {
-    const confirmed = window.confirm("Remove this emergency contact?");
-    if (!confirmed) return;
-
-    try {
-      setError("");
-
-      const res = await fetch(`${apiUrl}/users/emergency-contacts/${contactId}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || "Failed to remove contact");
-      }
-
-      setContacts(data.data?.emergencyContacts || []);
-    } catch (err: any) {
-      setError(err.message || "Could not remove contact");
+  const sendAlert = (phone?: string, name?: string) => {
+    if (!phone) {
+      toast.error("No phone number available");
+      return;
     }
-  };
-
-  const callContact = (phone: string) => {
-    if (!phone) return;
-    window.open(`tel:${phone}`, "_self");
-  };
-
-  const sendAlert = (phone: string, name?: string) => {
-    if (!phone) return;
-    const msg = `🚨 EMERGENCY: I need help immediately! Please respond ASAP.${name ? ` This is an alert from your contact.` : ""}`;
-    window.open(`sms:${phone}?body=${encodeURIComponent(msg)}`, "_blank");
+    const message = encodeURIComponent(
+      `🚨 EMERGENCY ALERT: I need immediate assistance! Please check on me.`
+    );
+    window.open(`https://wa.me/${phone.replace(/[^0-9]/g, "")}?text=${message}`, "_blank");
+    toast.success(`Emergency alert sent to ${name || phone}`);
   };
 
   const sendBulkAlert = () => {
     if (!contacts.length) return;
-
-    const msg = "🚨 EMERGENCY: I am in danger! Please help immediately!";
-
     contacts.forEach((c) => {
-      const phone = c.memberId?.phone;
-      if (phone) {
-        window.open(`sms:${phone}?body=${encodeURIComponent(msg)}`, "_blank");
+      if (c.memberId?.phone) {
+        const message = encodeURIComponent(
+          `🚨 EMERGENCY ALERT: I need immediate assistance! Please check on me.`
+        );
+        window.open(
+          `https://wa.me/${c.memberId.phone.replace(/[^0-9]/g, "")}?text=${message}`,
+          "_blank"
+        );
       }
     });
-
     setAlertSent(true);
-    setTimeout(() => setAlertSent(false), 3000);
+    toast.success("Emergency alerts triggered for all contacts");
+    setTimeout(() => setAlertSent(false), 4000);
+  };
+
+  const callContact = (phone?: string) => {
+    if (!phone) {
+      toast.error("No phone number available");
+      return;
+    }
+    window.open(`tel:${phone}`, "_self");
   };
 
   const closeAddModal = () => {
     setShowAdd(false);
+    setSelectedUser(null);
     setSearchQuery("");
     setSearchResults([]);
-    setSelectedUser(null);
-    setNewContact({
-      relation: "Friend",
-      priority: "High",
-    });
+    setNewContact({ relation: "Friend", priority: "High" });
   };
 
-  const openChat = async (contact: EmergencyContact) => {
-    setSelectedChatContact(contact);
-    setShowChat(true);
-    setChatHistory([]);
-    
-    // Load conversation from backend
-    await loadConversation(contact.memberId._id);
-    
-    // Start auto-refresh for new messages
-    if (refreshInterval) clearInterval(refreshInterval);
-    const interval = setInterval(() => {
-      if (selectedChatContact) {
-        loadConversation(selectedChatContact.memberId._id);
-      }
-    }, 3000); // Refresh every 3 seconds
-    setRefreshInterval(interval);
-  };
-
-  const loadConversation = async (userId: string) => {
-    try {
-      setLoadingMessages(true);
-      const response = await communicationAPI.getConversation(userId);
-      console.log('Conversation response:', response);
-      if (response.success) {
-        console.log('Messages loaded:', response.data.messages);
-        setChatHistory(response.data.messages);
-        // Scroll to bottom after messages load
-        setTimeout(() => {
-          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-        }, 100);
-      } else {
-        console.error('Failed to load conversation');
-        setChatHistory([]);
-      }
-    } catch (error: any) {
-      console.error('Failed to load conversation:', error);
-      if (error.response?.status === 403) {
-        console.error('Access denied - users may not be emergency contacts');
-      }
-      setChatHistory([]);
-    } finally {
-      setLoadingMessages(false);
-    }
-  };
-
-  const closeChat = () => {
-    if (refreshInterval) {
-      clearInterval(refreshInterval);
-      setRefreshInterval(null);
-    }
-    setShowChat(false);
-    setSelectedChatContact(null);
-    setChatMessage("");
-    setChatHistory([]);
-  };
-
+  // Chat Request Handlers
   const openRequestModal = (contact: EmergencyContact) => {
     setSelectedRequestContact(contact);
-    setRequestMessage("");
+    setRequestMessage(`Hi ${contact.memberId?.name}, I'd like to connect on BeSafe chat.`);
     setShowRequestModal(true);
   };
 
@@ -431,75 +489,99 @@ export default function EmergencyContactsPage() {
     if (!selectedRequestContact) return;
 
     try {
-      const response = await chatRequestAPI.sendRequest(
-        selectedRequestContact.memberId._id,
-        requestMessage
-      );
-
-      if (response.success) {
-        alert('Chat request sent successfully!');
-        closeRequestModal();
-        // Re-check chat eligibility
-        const checkResponse = await chatRequestAPI.canChat(selectedRequestContact.memberId._id);
-        setCanChatMap(prev => ({ ...prev, [selectedRequestContact._id]: checkResponse.data.canChat }));
-      }
-    } catch (error: any) {
-      console.error('Failed to send chat request:', error);
-      alert(error.response?.data?.message || 'Failed to send chat request. Please try again.');
+      await chatRequestAPI.sendRequest(selectedRequestContact.memberId._id, requestMessage);
+      toast.success("Chat request sent successfully");
+      closeRequestModal();
+    } catch (err: any) {
+      console.error("Failed to send chat request:", err);
+      toast.error(err.response?.data?.message || err.message || "Failed to send chat request");
     }
   };
 
   const acceptRequest = async (requestId: string, senderId: string) => {
     try {
-      const response = await chatRequestAPI.acceptRequest(requestId);
-      if (response.success) {
-        alert('Chat request accepted! Contact added to your emergency contacts.');
-        fetchPendingRequests();
-        fetchContacts(); // Refresh contacts list to show new contact
+      await chatRequestAPI.respondToRequest(requestId, "Accepted");
+      toast.success("Chat request accepted");
+      fetchPendingRequests();
+
+      const matchingContact = contacts.find(c => c.memberId._id === senderId);
+      if (matchingContact) {
+        setCanChatMap(prev => ({ ...prev, [matchingContact._id]: true }));
       }
-    } catch (error: any) {
-      console.error('Failed to accept request:', error);
-      alert('Failed to accept request. Please try again.');
+    } catch (err: any) {
+      console.error("Failed to accept request:", err);
+      toast.error(err.response?.data?.message || "Failed to accept chat request");
     }
   };
 
   const declineRequest = async (requestId: string) => {
     try {
-      const response = await chatRequestAPI.declineRequest(requestId);
-      if (response.success) {
-        alert('Chat request declined');
-        fetchPendingRequests();
-      }
-    } catch (error: any) {
-      console.error('Failed to decline request:', error);
-      alert('Failed to decline request. Please try again.');
+      await chatRequestAPI.respondToRequest(requestId, "Declined");
+      toast.success("Chat request declined");
+      fetchPendingRequests();
+    } catch (err: any) {
+      console.error("Failed to decline request:", err);
+      toast.error(err.response?.data?.message || "Failed to decline chat request");
+    }
+  };
+
+  // Chat Window Handlers
+  const openChat = async (contact: EmergencyContact) => {
+    setSelectedChatContact(contact);
+    setShowChat(true);
+    setChatMessage("");
+    await fetchChatHistory(contact.memberId._id);
+
+    if (refreshInterval) clearInterval(refreshInterval);
+    const interval = setInterval(() => {
+      fetchChatHistory(contact.memberId._id, false);
+    }, 4000);
+    setRefreshInterval(interval);
+  };
+
+  const closeChat = () => {
+    setShowChat(false);
+    setSelectedChatContact(null);
+    setChatMessage("");
+    setChatHistory([]);
+    if (refreshInterval) {
+      clearInterval(refreshInterval);
+      setRefreshInterval(null);
+    }
+  };
+
+  const fetchChatHistory = async (memberId: string, showLoading = true) => {
+    try {
+      if (showLoading) setLoadingMessages(true);
+      const res = await communicationAPI.getMessages(memberId);
+      setChatHistory(res.data?.messages || []);
+
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    } catch (error) {
+      console.error('Failed to fetch chat history:', error);
+    } finally {
+      if (showLoading) setLoadingMessages(false);
     }
   };
 
   const sendMessage = async () => {
-    if (!chatMessage.trim() || !selectedChatContact) return;
+    if (!selectedChatContact || !chatMessage.trim()) return;
 
     const tempMessage = chatMessage;
     setChatMessage("");
 
     try {
-      const response = await communicationAPI.sendMessage({
-        receiverId: selectedChatContact.memberId._id,
-        messageType: 'Text',
-        content: tempMessage,
-        priority: 'Normal'
-      });
-
-      console.log('Send message response:', response);
-
-      if (response.success) {
-        // Refresh conversation to get all messages including the new one
-        await loadConversation(selectedChatContact.memberId._id);
-      }
+      const response = await communicationAPI.sendMessage(selectedChatContact.memberId._id, tempMessage);
+      setChatHistory(prev => [...prev, response.data.message]);
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
     } catch (error) {
       console.error('Failed to send message:', error);
-      setChatMessage(tempMessage); // Restore message on error
-      alert('Failed to send message. Please try again.');
+      setChatMessage(tempMessage);
+      toast.error('Failed to send message');
     }
   };
 
@@ -509,270 +591,452 @@ export default function EmergencyContactsPage() {
 
       <main className="flex-1 p-6 lg:p-8 overflow-auto">
         <div className="max-w-6xl mx-auto space-y-6">
+
+          {/* Header */}
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
               <h1 className="text-2xl font-bold text-foreground mb-1 flex items-center gap-2">
-                <Users className="w-6 h-6 text-primary" /> Emergency Contacts
+                <Users className="w-6 h-6 text-primary" /> Emergency Contacts & Helplines
               </h1>
               <p className="text-muted-foreground text-sm">
-                Quick access to your safety network
+                Quick access to your personal safety circle and verified public emergency services
               </p>
             </div>
 
             {/* Add Contact Button */}
             <button
               onClick={() => setShowAdd(true)}
-              className="flex items-center gap-2 px-4 py-2.5 gradient-primary text-primary-foreground rounded-xl text-sm font-semibold shadow-md hover:scale-105 active:scale-95 transition-all"
+              className="flex items-center gap-2 px-4 py-2.5 gradient-primary text-primary-foreground rounded-xl text-sm font-semibold shadow-md hover:scale-105 active:scale-95 transition-all shrink-0"
             >
-              <UserPlus className="w-4 h-4" /> Add Contact
+              <UserPlus className="w-4 h-4" /> Add Personal Contact
             </button>
           </motion.div>
+
+          {/* Search Bar & View Tabs */}
+          <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+            {/* Real-time Search Input */}
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search contacts, police, ambulance, fire, theft..."
+                value={contactSearchQuery}
+                onChange={(e) => setContactSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-9 py-2.5 bg-card border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/30 outline-none shadow-sm transition-all"
+              />
+              {contactSearchQuery && (
+                <button
+                  onClick={() => setContactSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* View Filter Tabs */}
+            <div className="flex gap-1 p-1 bg-card border border-border rounded-xl text-xs font-medium shadow-sm overflow-x-auto">
+              <button
+                onClick={() => setActiveTab('all')}
+                className={`px-3.5 py-1.5 rounded-lg whitespace-nowrap transition-all ${activeTab === 'all'
+                  ? 'gradient-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
+                  }`}
+              >
+                All ({filteredPersonalContacts.length + filteredPublicServices.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('personal')}
+                className={`px-3.5 py-1.5 rounded-lg whitespace-nowrap transition-all ${activeTab === 'personal'
+                  ? 'gradient-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
+                  }`}
+              >
+                Personal Contacts ({filteredPersonalContacts.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('public')}
+                className={`px-3.5 py-1.5 rounded-lg whitespace-nowrap transition-all ${activeTab === 'public'
+                  ? 'gradient-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
+                  }`}
+              >
+                Public Helplines ({filteredPublicServices.length})
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div className="max-w-xl mx-auto px-4 py-4 space-y-3">
-          <button
-            onClick={sendBulkAlert}
-            disabled={!contacts.length}
-            className="w-full py-3 gradient-emergency text-destructive-foreground rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all shadow-depth disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <AlertTriangle className="w-4 h-4" />
-            Send Alert to All Contacts
-          </button>
+        {/* Content Container */}
+        <div className="max-w-6xl mx-auto space-y-8 pt-5">
 
-          {alertSent && (
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="p-3 bg-[hsl(var(--safe))]/10 text-[hsl(var(--safe))] text-sm font-medium text-center rounded-xl"
-            >
-              ✅ Emergency alert opened for all contacts
-            </motion.div>
-          )}
+          {/* SECTION 1: PERSONAL EMERGENCY CONTACTS */}
+          {(activeTab === 'all' || activeTab === 'personal') && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-primary" />
+                  <h2 className="font-bold text-base text-foreground">
+                    Personal Emergency Network
+                  </h2>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {filteredPersonalContacts.length} personal contacts
+                </span>
+              </div>
 
-          {/* Pending Chat Requests Section */}
-          {pendingRequests.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-card rounded-2xl shadow-depth p-4"
-            >
-              <h3 className="font-bold text-foreground mb-3 flex items-center gap-2">
-                <UserPlus className="w-4 h-4 text-primary" />
-                Chat Requests ({pendingRequests.length})
-              </h3>
-              <div className="space-y-3">
-                {pendingRequests.map((request) => (
-                  <div
-                    key={request._id}
-                    className="flex items-center justify-between gap-3 p-3 bg-secondary/30 rounded-xl"
+              {/* Bulk Alert Banner */}
+              <div className="max-w-xl mx-auto space-y-3">
+                <button
+                  onClick={sendBulkAlert}
+                  disabled={!contacts.length}
+                  className="w-full py-3 gradient-emergency text-destructive-foreground rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all shadow-depth disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <AlertTriangle className="w-4 h-4" />
+                  Send Alert to All Personal Contacts
+                </button>
+
+                {alertSent && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-3 bg-[hsl(var(--safe))]/10 text-[hsl(var(--safe))] text-sm font-medium text-center rounded-xl"
                   >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center text-primary-foreground font-bold text-sm shrink-0">
-                        {request.senderId?.name?.[0] || "?"}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-semibold text-sm text-foreground truncate">
-                          {request.senderId?.name}
-                        </p>
-                        {request.message && (
-                          <p className="text-xs text-muted-foreground truncate">
-                            {request.message}
-                          </p>
-                        )}
-                      </div>
+                    ✅ Emergency alert opened for all contacts
+                  </motion.div>
+                )}
+
+                {/* Pending Chat Requests Section */}
+                {pendingRequests.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-card rounded-2xl shadow-depth p-4 border border-border"
+                  >
+                    <h3 className="font-bold text-foreground mb-3 flex items-center gap-2 text-sm">
+                      <UserPlus className="w-4 h-4 text-primary" />
+                      Incoming Chat Requests ({pendingRequests.length})
+                    </h3>
+                    <div className="space-y-2.5">
+                      {pendingRequests.map((request) => (
+                        <div
+                          key={request._id}
+                          className="flex items-center justify-between gap-3 p-3 bg-secondary/30 rounded-xl"
+                        >
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center text-primary-foreground font-bold text-sm shrink-0">
+                              {request.senderId?.name?.[0] || "?"}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-sm text-foreground truncate">
+                                {request.senderId?.name}
+                              </p>
+                              {request.message && (
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {request.message}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => acceptRequest(request._id, request.senderId._id)}
+                              className="px-3 py-1.5 rounded-lg bg-[hsl(var(--safe))]/10 text-[hsl(var(--safe))] hover:bg-[hsl(var(--safe))]/20 transition-colors text-xs font-semibold"
+                            >
+                              Accept
+                            </button>
+                            <button
+                              onClick={() => declineRequest(request._id)}
+                              className="px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors text-xs font-semibold"
+                            >
+                              Decline
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        onClick={() => acceptRequest(request._id, request.senderId._id)}
-                        className="px-3 py-2 rounded-lg bg-[hsl(var(--safe))]/10 text-[hsl(var(--safe))] hover:bg-[hsl(var(--safe))]/20 transition-colors text-sm font-medium"
-                      >
-                        Accept
-                      </button>
-                      <button
-                        onClick={() => declineRequest(request._id)}
-                        className="px-3 py-2 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors text-sm font-medium"
-                      >
-                        Decline
-                      </button>
-                    </div>
+                  </motion.div>
+                )}
+
+                {error && (
+                  <div className="p-3 bg-destructive/10 text-destructive text-sm font-medium text-center rounded-xl">
+                    {error}
                   </div>
-                ))}
+                )}
+
+                {loading ? (
+                  <div className="bg-card rounded-2xl shadow-depth p-8 text-center text-sm text-muted-foreground animate-pulse">
+                    Loading personal contacts...
+                  </div>
+                ) : filteredPersonalContacts.length === 0 ? (
+                  <div className="bg-card rounded-2xl shadow-depth border border-border p-8 text-center space-y-2">
+                    <p className="text-sm font-medium text-foreground">
+                      {contactSearchQuery
+                        ? `No personal contacts match "${contactSearchQuery}".`
+                        : "No personal emergency contacts added yet."}
+                    </p>
+                    <button
+                      onClick={() => setShowAdd(true)}
+                      className="px-4 py-2 gradient-primary text-primary-foreground rounded-xl text-xs font-semibold shadow-sm inline-flex items-center gap-1.5 mt-2"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" /> Add Your First Contact
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {filteredPersonalContacts.map((contact, i) => (
+                      <motion.div
+                        key={contact._id}
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: i * 0.04 }}
+                        className="bg-card rounded-2xl shadow-depth border border-border p-4"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className="w-11 h-11 rounded-full gradient-primary flex items-center justify-center text-primary-foreground font-bold text-sm shrink-0">
+                              {contact.memberId?.name?.[0] || "?"}
+                            </div>
+
+                            <div className="min-w-0">
+                              <p className="font-semibold text-sm text-foreground truncate">
+                                {contact.memberId?.name}
+                              </p>
+                              <p className="text-xs text-muted-foreground font-mono">
+                                {contact.memberId?.phone}
+                              </p>
+
+                              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                <span
+                                  className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${relationColors[contact.relation] || "bg-muted text-muted-foreground"
+                                    }`}
+                                >
+                                  {contact.relation}
+                                </span>
+
+                                <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-secondary text-foreground">
+                                  {contact.priority} Priority
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              onClick={() => callContact(contact.memberId?.phone)}
+                              className="w-9 h-9 rounded-xl bg-[hsl(var(--safe))]/10 text-[hsl(var(--safe))] flex items-center justify-center hover:bg-[hsl(var(--safe))]/20 transition-colors"
+                              title="Call"
+                            >
+                              <Phone className="w-4 h-4" />
+                            </button>
+
+                            {loadingChatCheck[contact._id] ? (
+                              <div className="w-9 h-9 rounded-xl bg-muted/10 text-muted flex items-center justify-center">
+                                <div className="w-4 h-4 border-2 border-muted border-t-transparent rounded-full animate-spin" />
+                              </div>
+                            ) : canChatMap[contact._id] ? (
+                              <button
+                                onClick={() => openChat(contact)}
+                                className="w-9 h-9 rounded-xl bg-accent/10 text-accent flex items-center justify-center hover:bg-accent/20 transition-colors"
+                                title="Chat"
+                              >
+                                <MessageCircle className="w-4 h-4" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => openRequestModal(contact)}
+                                className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center hover:bg-primary/20 transition-colors"
+                                title="Request Chat"
+                              >
+                                <UserPlus className="w-4 h-4" />
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => sendAlert(contact.memberId?.phone, contact.memberId?.name)}
+                              className="w-9 h-9 rounded-xl bg-destructive/10 text-destructive flex items-center justify-center hover:bg-destructive/20 transition-colors"
+                              title="Send WhatsApp Alert"
+                            >
+                              <Send className="w-4 h-4" />
+                            </button>
+
+                            <button
+                              onClick={() => startEdit(contact)}
+                              className="w-9 h-9 rounded-xl bg-secondary text-foreground flex items-center justify-center hover:bg-secondary/80 transition-colors"
+                              title="Edit Contact"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+
+                            <button
+                              onClick={() => deleteContact(contact._id)}
+                              className="w-9 h-9 rounded-xl bg-destructive/10 text-destructive flex items-center justify-center hover:bg-destructive/20 transition-colors"
+                              title="Delete Contact"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Edit Inline Form */}
+                        {editingContactId === contact._id && (
+                          <div className="mt-4 pt-4 border-t border-border space-y-3">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-[11px] font-semibold text-muted-foreground block mb-1">Relation</label>
+                                <select
+                                  value={editForm.relation}
+                                  onChange={(e) =>
+                                    setEditForm((prev) => ({
+                                      ...prev,
+                                      relation: e.target.value as any,
+                                    }))
+                                  }
+                                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-xs text-foreground"
+                                >
+                                  <option value="Parent">Parent</option>
+                                  <option value="Guardian">Guardian</option>
+                                  <option value="Friend">Friend</option>
+                                  <option value="Spouse">Spouse</option>
+                                  <option value="Sibling">Sibling</option>
+                                  <option value="Other">Other</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="text-[11px] font-semibold text-muted-foreground block mb-1">Priority</label>
+                                <select
+                                  value={editForm.priority}
+                                  onChange={(e) =>
+                                    setEditForm((prev) => ({
+                                      ...prev,
+                                      priority: e.target.value as any,
+                                    }))
+                                  }
+                                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-xs text-foreground"
+                                >
+                                  <option value="High">High</option>
+                                  <option value="Medium">Medium</option>
+                                  <option value="Low">Low</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            <div className="flex gap-2 pt-1">
+                              <button
+                                onClick={() => updateContact(contact._id)}
+                                className="flex-1 py-2 gradient-primary text-primary-foreground rounded-xl font-bold text-xs hover:opacity-90"
+                              >
+                                Save Changes
+                              </button>
+
+                              <button
+                                onClick={() => setEditingContactId(null)}
+                                className="flex-1 py-2 bg-secondary text-foreground rounded-xl font-bold text-xs hover:bg-secondary/80"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
               </div>
             </motion.div>
           )}
 
-          {error && (
-            <div className="p-3 bg-destructive/10 text-destructive text-sm font-medium text-center rounded-xl">
-              {error}
-            </div>
-          )}
-
-          {loading ? (
-            <div className="bg-card rounded-2xl shadow-depth p-6 text-center text-sm text-muted-foreground">
-              Loading contacts...
-            </div>
-          ) : contacts.length === 0 ? (
-            <div className="bg-card rounded-2xl shadow-depth p-6 text-center text-sm text-muted-foreground">
-              No emergency contacts added yet.
-            </div>
-          ) : (
-            contacts.map((contact, i) => (
-              <motion.div
-                key={contact._id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
-                className="bg-card rounded-2xl shadow-depth p-4"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="w-11 h-11 rounded-full gradient-primary flex items-center justify-center text-primary-foreground font-bold text-sm shrink-0">
-                      {contact.memberId?.name?.[0] || "?"}
-                    </div>
-
-                    <div className="min-w-0">
-                      <p className="font-semibold text-sm text-foreground truncate">
-                        {contact.memberId?.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {contact.memberId?.phone}
-                      </p>
-
-                      <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${relationColors[contact.relation] || "bg-muted text-muted-foreground"
-                            }`}
-                        >
-                          {contact.relation}
-                        </span>
-
-                        <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-secondary text-foreground">
-                          {contact.priority}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => callContact(contact.memberId?.phone)}
-                      className="w-10 h-10 rounded-full bg-[hsl(var(--safe))]/10 text-[hsl(var(--safe))] flex items-center justify-center hover:bg-[hsl(var(--safe))]/20 transition-colors"
-                      title="Call"
-                    >
-                      <Phone className="w-4 h-4" />
-                    </button>
-
-                    {loadingChatCheck[contact._id] ? (
-                      <div className="w-10 h-10 rounded-full bg-muted/10 text-muted flex items-center justify-center">
-                        <div className="w-4 h-4 border-2 border-muted border-t-transparent rounded-full animate-spin" />
-                      </div>
-                    ) : canChatMap[contact._id] ? (
-                      <button
-                        onClick={() => openChat(contact)}
-                        className="w-10 h-10 rounded-full bg-accent/10 text-accent flex items-center justify-center hover:bg-accent/20 transition-colors"
-                        title="Chat"
-                      >
-                        <MessageCircle className="w-4 h-4" />
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => openRequestModal(contact)}
-                        className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center hover:bg-primary/20 transition-colors"
-                        title="Request Chat"
-                      >
-                        <UserPlus className="w-4 h-4" />
-                      </button>
-                    )}
-
-                    <button
-                      onClick={() =>
-                        sendAlert(contact.memberId?.phone, contact.memberId?.name)
-                      }
-                      className="w-10 h-10 rounded-full bg-destructive/10 text-destructive flex items-center justify-center hover:bg-destructive/20 transition-colors"
-                      title="Send Alert"
-                    >
-                      <Send className="w-4 h-4" />
-                    </button>
-
-                    <button
-                      onClick={() => startEdit(contact)}
-                      className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center hover:bg-primary/20 transition-colors"
-                      title="Edit"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
-
-                    <button
-                      onClick={() => deleteContact(contact._id)}
-                      className="w-10 h-10 rounded-full bg-destructive/10 text-destructive flex items-center justify-center hover:bg-destructive/20 transition-colors"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+          {/* SECTION 2: PUBLIC EMERGENCY SERVICES & HELPLINES */}
+          {(activeTab === 'all' || activeTab === 'public') && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-primary" />
+                  <h2 className="font-bold text-base text-foreground">
+                    Public Emergency Helplines & Authorities
+                  </h2>
                 </div>
+                <span className="text-xs text-muted-foreground">
+                  {filteredPublicServices.length} helplines available
+                </span>
+              </div>
 
-                {editingContactId === contact._id && (
-                  <div className="mt-4 pt-4 border-t border-border space-y-3">
-                    <select
-                      value={editForm.relation}
-                      onChange={(e) =>
-                        setEditForm((prev) => ({
-                          ...prev,
-                          relation: e.target.value as any,
-                        }))
-                      }
-                      className="w-full px-4 py-3 rounded-xl border border-border bg-background text-sm text-foreground"
-                    >
-                      <option value="Parent">Parent</option>
-                      <option value="Guardian">Guardian</option>
-                      <option value="Friend">Friend</option>
-                      <option value="Spouse">Spouse</option>
-                      <option value="Sibling">Sibling</option>
-                      <option value="Other">Other</option>
-                    </select>
-
-                    <select
-                      value={editForm.priority}
-                      onChange={(e) =>
-                        setEditForm((prev) => ({
-                          ...prev,
-                          priority: e.target.value as any,
-                        }))
-                      }
-                      className="w-full px-4 py-3 rounded-xl border border-border bg-background text-sm text-foreground"
-                    >
-                      <option value="High">High</option>
-                      <option value="Medium">Medium</option>
-                      <option value="Low">Low</option>
-                    </select>
-
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => updateContact(contact._id)}
-                        className="flex-1 py-3 gradient-primary text-primary-foreground rounded-xl font-bold text-sm hover:opacity-90"
+              {filteredPublicServices.length === 0 ? (
+                <div className="bg-card rounded-2xl border border-border p-6 text-center text-xs text-muted-foreground">
+                  No public emergency services match "{contactSearchQuery}".
+                </div>
+              ) : (
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredPublicServices.map((service) => {
+                    const Icon = service.icon;
+                    return (
+                      <div
+                        key={service.id}
+                        className="bg-card rounded-2xl shadow-depth border border-border p-4 flex flex-col justify-between hover:shadow-depth-hover hover:-translate-y-0.5 transition-all space-y-3"
                       >
-                        Save
-                      </button>
+                        <div>
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className={`p-2.5 rounded-xl border ${service.color} flex items-center justify-center shrink-0`}>
+                              <Icon className="w-5 h-5" />
+                            </div>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${service.color}`}>
+                              {service.badge}
+                            </span>
+                          </div>
 
-                      <button
-                        onClick={() => setEditingContactId(null)}
-                        className="flex-1 py-3 bg-secondary text-foreground rounded-xl font-bold text-sm hover:opacity-90"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </motion.div>
-            ))
+                          <h3 className="font-bold text-sm text-foreground leading-snug">
+                            {service.name}
+                          </h3>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-base font-black font-mono text-primary tracking-wide">
+                              {service.number}
+                            </span>
+                            <button
+                              onClick={() => copyToClipboard(service.number, service.name)}
+                              title="Copy Number"
+                              className="p-1 text-muted-foreground hover:text-primary transition-colors"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed line-clamp-2">
+                            {service.description}
+                          </p>
+                        </div>
+
+                        {/* Call Action Button */}
+                        <div className="pt-2 border-t border-border/50 flex gap-2">
+                          <button
+                            onClick={() => callContact(service.number)}
+                            className="flex-1 py-2 gradient-emergency text-destructive-foreground rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 hover:opacity-90 active:scale-95 transition-all shadow-sm"
+                          >
+                            <PhoneCall className="w-3.5 h-3.5" /> Call {service.number}
+                          </button>
+                          <button
+                            onClick={() => copyToClipboard(service.number, service.name)}
+                            className="px-3 py-2 bg-secondary rounded-xl text-xs font-medium text-foreground hover:bg-secondary/80 transition-colors"
+                            title="Copy Number"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </motion.div>
           )}
+
+
         </div>
 
+        {/* Add Contact Modal */}
         {showAdd && (
           <>
             <div
-              className="fixed inset-0 bg-foreground/30 z-50"
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
               onClick={closeAddModal}
             />
 
@@ -782,12 +1046,14 @@ export default function EmergencyContactsPage() {
               className="fixed bottom-0 left-0 right-0 z-50 bg-card rounded-t-3xl shadow-2xl max-h-[90vh] flex flex-col"
             >
               <div className="p-5 space-y-4 overflow-y-auto">
-                <div className="max-w-lg mx-auto w-full flex flex-col h-full space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h2 className="font-bold text-lg text-foreground">Add Contact</h2>
+                <div className="max-w-lg mx-auto w-full flex flex-col h-full space-y-3">
+                  <div className="flex items-center justify-between border-b border-border pb-3">
+                    <h2 className="font-bold text-base text-foreground flex items-center gap-2">
+                      <UserPlus className="w-5 h-5 text-primary" /> Add Emergency Contact
+                    </h2>
                     <button
                       onClick={closeAddModal}
-                      className="text-muted-foreground hover:text-foreground"
+                      className="p-1 text-muted-foreground hover:text-foreground"
                     >
                       <X className="w-5 h-5" />
                     </button>
@@ -797,19 +1063,20 @@ export default function EmergencyContactsPage() {
                     <input
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search by name, email, or phone"
-                      className="flex-1 px-4 py-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      onKeyDown={(e) => e.key === 'Enter' && searchUsers()}
+                      placeholder="Search member by name, phone, or email"
+                      className="flex-1 px-4 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
                     />
                     <button
                       onClick={searchUsers}
-                      className="px-4 py-3 rounded-xl gradient-primary text-primary-foreground hover:opacity-90"
+                      className="px-4 py-2.5 rounded-xl gradient-primary text-primary-foreground hover:opacity-90 active:scale-95 transition-all"
                     >
                       <Search className="w-4 h-4" />
                     </button>
                   </div>
 
                   {searching && (
-                    <p className="text-sm text-muted-foreground">Searching...</p>
+                    <p className="text-xs text-muted-foreground animate-pulse">Searching users...</p>
                   )}
 
                   {searchResults.length > 0 && (
@@ -819,17 +1086,17 @@ export default function EmergencyContactsPage() {
                           key={user._id}
                           onClick={() => setSelectedUser(user)}
                           className={`w-full text-left p-3 rounded-xl border transition ${selectedUser?._id === user._id
-                            ? "border-primary bg-primary/5"
-                            : "border-border bg-background"
+                            ? "border-primary bg-primary/5 ring-1 ring-primary"
+                            : "border-border bg-background hover:bg-secondary/40"
                             }`}
                         >
                           <p className="font-semibold text-sm text-foreground">{user.name}</p>
-                          <p className="text-xs text-muted-foreground">{user.phone}</p>
+                          <p className="text-xs text-muted-foreground font-mono">{user.phone}</p>
                           <p className="text-xs text-muted-foreground">{user.email}</p>
                           {user.userType && (
-                            <p className="text-[10px] mt-1 text-muted-foreground uppercase">
+                            <span className="text-[10px] mt-1 inline-block px-2 py-0.5 rounded bg-secondary text-foreground uppercase font-semibold">
                               {user.userType}
-                            </p>
+                            </span>
                           )}
                         </button>
                       ))}
@@ -837,55 +1104,62 @@ export default function EmergencyContactsPage() {
                   )}
 
                   {selectedUser && (
-                    <div className="p-3 rounded-xl border border-primary/20 bg-primary/5">
-                      <p className="text-sm font-semibold text-foreground">
-                        Selected: {selectedUser.name}
+                    <div className="p-3 rounded-xl border border-primary/30 bg-primary/5">
+                      <p className="text-xs font-semibold text-foreground">
+                        Selected: <span className="text-primary">{selectedUser.name}</span>
                       </p>
-                      <p className="text-xs text-muted-foreground">{selectedUser.phone}</p>
-                      <p className="text-xs text-muted-foreground">{selectedUser.email}</p>
+                      <p className="text-xs text-muted-foreground font-mono">{selectedUser.phone}</p>
                     </div>
                   )}
 
-                  <select
-                    value={newContact.relation}
-                    onChange={(e) =>
-                      setNewContact((prev) => ({
-                        ...prev,
-                        relation: e.target.value,
-                      }))
-                    }
-                    className="w-full px-4 py-3 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  >
-                    <option value="Parent">Parent</option>
-                    <option value="Guardian">Guardian</option>
-                    <option value="Friend">Friend</option>
-                    <option value="Spouse">Spouse</option>
-                    <option value="Sibling">Sibling</option>
-                    <option value="Other">Other</option>
-                  </select>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-muted-foreground block mb-1">Relationship</label>
+                      <select
+                        value={newContact.relation}
+                        onChange={(e) =>
+                          setNewContact((prev) => ({
+                            ...prev,
+                            relation: e.target.value,
+                          }))
+                        }
+                        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      >
+                        <option value="Parent">Parent</option>
+                        <option value="Guardian">Guardian</option>
+                        <option value="Friend">Friend</option>
+                        <option value="Spouse">Spouse</option>
+                        <option value="Sibling">Sibling</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
 
-                  <select
-                    value={newContact.priority}
-                    onChange={(e) =>
-                      setNewContact((prev) => ({
-                        ...prev,
-                        priority: e.target.value,
-                      }))
-                    }
-                    className="w-full px-4 py-3 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  >
-                    <option value="High">High</option>
-                    <option value="Medium">Medium</option>
-                    <option value="Low">Low</option>
-                  </select>
+                    <div>
+                      <label className="text-xs font-semibold text-muted-foreground block mb-1">Priority</label>
+                      <select
+                        value={newContact.priority}
+                        onChange={(e) =>
+                          setNewContact((prev) => ({
+                            ...prev,
+                            priority: e.target.value,
+                          }))
+                        }
+                        className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      >
+                        <option value="High">High</option>
+                        <option value="Medium">Medium</option>
+                        <option value="Low">Low</option>
+                      </select>
+                    </div>
+                  </div>
 
-                  <div className="p-4 pb-20 border-t border-border bg-card">
+                  <div className="pt-2 pb-16">
                     <button
                       onClick={addContact}
                       disabled={adding || !selectedUser}
-                      className="w-full py-3 gradient-primary text-primary-foreground rounded-xl font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full py-3 gradient-primary text-primary-foreground rounded-xl font-bold text-sm hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
                     >
-                      {adding ? "Adding..." : "Add Contact"}
+                      {adding ? "Adding..." : "Add to Emergency Network"}
                     </button>
                   </div>
                 </div>
@@ -894,10 +1168,11 @@ export default function EmergencyContactsPage() {
           </>
         )}
 
+        {/* Send Request Modal */}
         {showRequestModal && selectedRequestContact && (
           <>
             <div
-              className="fixed inset-0 bg-foreground/30 z-50"
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
               onClick={closeRequestModal}
             />
 
@@ -907,31 +1182,31 @@ export default function EmergencyContactsPage() {
               className="fixed inset-0 z-50 flex items-center justify-center p-4"
             >
               <div
-                className="bg-card rounded-2xl shadow-2xl max-w-md w-full p-6"
+                className="bg-card border border-border rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-4"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-bold text-foreground">Send Chat Request</h2>
+                <div className="flex items-center justify-between border-b border-border pb-3">
+                  <h2 className="text-base font-bold text-foreground">Send Chat Request</h2>
                   <button
                     onClick={closeRequestModal}
-                    className="text-muted-foreground hover:text-foreground"
+                    className="p-1 text-muted-foreground hover:text-foreground"
                   >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
 
-                <div className="flex items-center gap-3 mb-4 p-3 bg-secondary/30 rounded-xl">
+                <div className="flex items-center gap-3 p-3 bg-secondary/30 rounded-xl">
                   <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center text-primary-foreground font-bold text-sm">
                     {selectedRequestContact.memberId?.name?.[0] || "?"}
                   </div>
                   <div>
-                    <p className="font-semibold text-foreground">{selectedRequestContact.memberId?.name}</p>
+                    <p className="font-semibold text-foreground text-sm">{selectedRequestContact.memberId?.name}</p>
                     <p className="text-xs text-muted-foreground">{selectedRequestContact.relation}</p>
                   </div>
                 </div>
 
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-foreground mb-2">
+                <div>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
                     Message (optional)
                   </label>
                   <textarea
@@ -939,20 +1214,20 @@ export default function EmergencyContactsPage() {
                     onChange={(e) => setRequestMessage(e.target.value)}
                     placeholder="Add a message to your request..."
                     rows={3}
-                    className="w-full px-4 py-3 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                    className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
                   />
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex gap-2 pt-2">
                   <button
                     onClick={closeRequestModal}
-                    className="flex-1 px-4 py-3 rounded-xl border border-border text-foreground hover:bg-secondary/50 transition-colors"
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-secondary text-foreground font-semibold text-xs hover:bg-secondary/80 transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={sendChatRequest}
-                    className="flex-1 px-4 py-3 rounded-xl gradient-primary text-primary-foreground hover:opacity-90 transition-opacity"
+                    className="flex-1 px-4 py-2.5 rounded-xl gradient-primary text-primary-foreground font-semibold text-xs hover:opacity-90 transition-opacity"
                   >
                     Send Request
                   </button>
@@ -962,46 +1237,47 @@ export default function EmergencyContactsPage() {
           </>
         )}
 
+        {/* Live Chat Drawer */}
         {showChat && selectedChatContact && (
           <>
             <div
-              className="fixed inset-0 bg-foreground/30 z-50 "
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
               onClick={closeChat}
             />
 
             <motion.div
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
-              className="fixed bottom-0 left-0 right-0 z-50 bg-card rounded-t-3xl shadow-2xl max-h-[90vh] flex flex-col pb-20"
+              className="fixed bottom-0 left-0 right-0 z-50 bg-card rounded-t-3xl shadow-2xl max-h-[90vh] flex flex-col pb-20 border-t border-border"
             >
               <div className="p-5 space-y-4 overflow-y-auto flex-1">
                 <div className="max-w-lg mx-auto w-full flex flex-col h-full space-y-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between border-b border-border pb-3">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center text-primary-foreground font-bold text-sm">
                         {selectedChatContact.memberId?.name?.[0] || "?"}
                       </div>
                       <div>
-                        <h2 className="font-bold text-lg text-foreground">{selectedChatContact.memberId?.name}</h2>
+                        <h2 className="font-bold text-base text-foreground">{selectedChatContact.memberId?.name}</h2>
                         <p className="text-xs text-muted-foreground">{selectedChatContact.relation}</p>
                       </div>
                     </div>
                     <button
                       onClick={closeChat}
-                      className="text-muted-foreground hover:text-foreground"
+                      className="p-1 text-muted-foreground hover:text-foreground"
                     >
                       <X className="w-5 h-5" />
                     </button>
                   </div>
 
                   {/* Chat Messages */}
-                  <div className="flex-1 overflow-y-auto space-y-2 min-h-[300px] max-h-[400px] p-3 bg-[#efeae2] rounded-xl">
+                  <div className="flex-1 overflow-y-auto space-y-2 min-h-[300px] max-h-[400px] p-3 bg-secondary/20 rounded-2xl border border-border/50">
                     {loadingMessages ? (
-                      <div className="text-center text-muted-foreground text-sm py-8">
+                      <div className="text-center text-muted-foreground text-xs py-8">
                         Loading messages...
                       </div>
                     ) : chatHistory.length === 0 ? (
-                      <div className="text-center text-muted-foreground text-sm py-8">
+                      <div className="text-center text-muted-foreground text-xs py-8">
                         No messages yet. Start the conversation!
                       </div>
                     ) : (
@@ -1010,32 +1286,29 @@ export default function EmergencyContactsPage() {
                           const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
                           const isSent = msg.senderId._id === currentUser.id || msg.senderId === currentUser.id;
                           const messageTime = new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                          
+
                           return (
                             <div
                               key={msg._id || i}
                               className={`flex ${isSent ? 'justify-end' : 'justify-start'}`}
                             >
                               <div
-                                className={`max-w-[75%] px-3 py-2 rounded-lg shadow-sm ${
-                                  isSent
-                                    ? 'bg-[#dcf8c6] text-foreground'
-                                    : 'bg-white text-foreground'
-                                }`}
+                                className={`max-w-[78%] px-3.5 py-2 rounded-2xl shadow-sm text-xs ${isSent
+                                  ? 'gradient-primary text-primary-foreground rounded-br-none'
+                                  : 'bg-card text-foreground border border-border rounded-bl-none'
+                                  }`}
                               >
-                                <p className="text-sm break-words">{msg.content}</p>
-                                <div className="flex items-center justify-end gap-1 mt-1">
-                                  <span className="text-[10px] text-muted-foreground">
-                                    {messageTime}
-                                  </span>
+                                <p className="break-words leading-relaxed">{msg.content}</p>
+                                <div className={`flex items-center justify-end gap-1 mt-1 text-[10px] ${isSent ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                                  <span>{messageTime}</span>
                                   {isSent && (
-                                    <span className="text-[10px]">
+                                    <span>
                                       {msg.isRead ? (
-                                        <CheckCheck className="w-3 h-3 text-blue-500" />
+                                        <CheckCheck className="w-3 h-3 text-white" />
                                       ) : msg.delivered ? (
-                                        <CheckCheck className="w-3 h-3 text-muted-foreground" />
+                                        <CheckCheck className="w-3 h-3 opacity-70" />
                                       ) : (
-                                        <Check className="w-3 h-3 text-muted-foreground" />
+                                        <Check className="w-3 h-3 opacity-70" />
                                       )}
                                     </span>
                                   )}
@@ -1050,22 +1323,20 @@ export default function EmergencyContactsPage() {
                   </div>
 
                   {/* Message Input */}
-                  <div className="flex gap-2 pt-2 items-end">
-                    <div className="flex-1 relative">
-                      <input
-                        value={chatMessage}
-                        onChange={(e) => setChatMessage(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                        placeholder="Type a message..."
-                        className="w-full px-4 py-3 rounded-full border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 pr-12"
-                      />
-                    </div>
+                  <div className="flex gap-2 pt-2 items-center">
+                    <input
+                      value={chatMessage}
+                      onChange={(e) => setChatMessage(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+                      placeholder="Type an emergency message..."
+                      className="flex-1 px-4 py-2.5 rounded-full border border-border bg-background text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
                     <button
                       onClick={sendMessage}
                       disabled={!chatMessage.trim()}
-                      className="w-12 h-12 rounded-full bg-[#00a884] text-white hover:bg-[#008f6f] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+                      className="w-10 h-10 rounded-full gradient-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-all shrink-0 shadow-sm"
                     >
-                      <Send className="w-5 h-5" />
+                      <Send className="w-4 h-4" />
                     </button>
                   </div>
                 </div>

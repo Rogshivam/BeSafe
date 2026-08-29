@@ -9,6 +9,7 @@ import {
   validateLogin,
   handleValidationErrors
 } from '../middleware/validation.js';
+import { uploadProfileImage } from '../utils/fileUpload.js';
 import rateLimit from 'express-rate-limit';
 
 const forgotLimiter = rateLimit({
@@ -730,6 +731,49 @@ router.put('/profile', auth, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Server error updating profile'
+    });
+  }
+});
+
+// Upload profile avatar
+router.post('/avatar', auth, uploadProfileImage.single('avatar'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please select an image file to upload'
+      });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const fileUrl = req.file.path || `/uploads/profile-images/${req.file.filename}`;
+    user.profileImage = fileUrl;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Avatar updated successfully',
+      data: {
+        profileImage: fileUrl,
+        user: {
+          id: user._id,
+          name: user.name,
+          profileImage: fileUrl
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Avatar upload error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error uploading avatar'
     });
   }
 });
